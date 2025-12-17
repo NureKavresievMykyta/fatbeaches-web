@@ -871,7 +871,6 @@ const Dashboard = ({ session, profile, onEditProfile }) => {
                 />
             )}
 
-            {/* ВІКНО ДОДАВАННЯ СПОРТУ */}
             {showWorkoutModal && (
                 <WorkoutModal
                     session={session}
@@ -880,17 +879,17 @@ const Dashboard = ({ session, profile, onEditProfile }) => {
                     onWorkoutAdded={() => setUpdateTrigger(t => t + 1)}
                 />
             )}
+
+            {/* ВІКНО АНАЛІТИКИ ПЕРЕНЕСЕНО СЮДИ, ВСЕРЕДИНУ RETURN */}
+            {showAnalytics && (
+                <AnalyticsView
+                    session={session}
+                    onClose={() => setShowAnalytics(false)}
+                />
+            )}
         </div>
-    );
-    {
-        showAnalytics && (
-            <AnalyticsView
-                session={session}
-                onClose={() => setShowAnalytics(false)}
-            />
-        )
-    }
-};
+    ); // <-- ТУТ ЗАКІНЧУЄТЬСЯ RETURN
+}; // <-- ТУТ ЗАКІНЧУЄТЬСЯ КОМПОНЕНТ
 
 const MealCard = ({ title, icon: Icon, calories, bg, onClick }) => (
     <button
