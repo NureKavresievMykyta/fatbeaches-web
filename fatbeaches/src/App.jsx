@@ -753,12 +753,12 @@ const Dashboard = ({ session, profile, onEditProfile }) => {
                                     <button onClick={() => { onEditProfile(); setMenuOpen(false); }} className="w-full flex items-center gap-3 p-3 rounded-xl hover:bg-slate-50 text-slate-600 text-sm font-medium transition-colors text-left">
                                         <Settings size={18} className="text-emerald-500" /> Налаштування профілю
                                     </button>
-
-                                    {/* ПІДВ'ЯЗАНА КНОПКА АНАЛІТИКИ */}
                                     <button
                                         onClick={() => {
-                                            setShowAnalytics(true); // Відкриваємо аналітику
-                                            setMenuOpen(false);      // Закриваємо меню
+                                            console.log("КНОПКА НАТИСНУТА!"); // З'явиться в консолі (F12)
+                                            alert("Натиснуто! Спроба відкрити аналітику..."); // Вискочить вікно на екрані
+                                            setShowAnalytics(true);
+                                            setMenuOpen(false);
                                         }}
                                         className="w-full flex items-center gap-3 p-3 rounded-xl hover:bg-slate-50 text-slate-600 text-sm font-medium transition-colors text-left"
                                     >
@@ -857,7 +857,10 @@ const Dashboard = ({ session, profile, onEditProfile }) => {
             {showAnalytics && (
                 <AnalyticsView
                     session={session}
-                    onClose={() => setShowAnalytics(false)}
+                    onClose={() => {
+                        console.log("ЗАКРИТТЯ АНАЛІТИКИ");
+                        setShowAnalytics(false);
+                    }}
                 />
             )}
 
