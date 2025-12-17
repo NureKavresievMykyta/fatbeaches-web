@@ -280,6 +280,7 @@ const WorkoutModal = ({ session, profile, onClose, onWorkoutAdded }) => {
         yoga: 2.5
     };
 
+    // Функція розрахунку, яка викликається при кожному рендері
     const calculateBurned = () => {
         const weight = profile?.weight_kg || 70;
         const met = MET_VALUES[selectedType] || 3.0;
@@ -287,15 +288,19 @@ const WorkoutModal = ({ session, profile, onClose, onWorkoutAdded }) => {
     };
 
     const handleSave = async () => {
-        setLoading(true);
+        if (!duration || duration <= 0) {
+            alert("Будь ласка, введіть тривалість");
+            return;
+        }
 
+        setLoading(true);
         const burned = calculateBurned();
 
         const { error } = await supabase
             .from('workout_entries')
             .insert({
                 user_id: session.user.id,
-                workout_item_id: WORKOUT_TYPES[selectedType],
+                workout_item_id: WORKOUT_TYPES[selectedType], // Відправляємо число ID
                 duration_minutes: parseInt(duration, 10),
                 calories_burned_estimated: burned,
                 date_time: new Date().toISOString()
@@ -305,7 +310,7 @@ const WorkoutModal = ({ session, profile, onClose, onWorkoutAdded }) => {
             onWorkoutAdded();
             onClose();
         } else {
-            alert(error.message);
+            alert("Помилка збереження: " + error.message);
         }
 
         setLoading(false);
@@ -313,39 +318,60 @@ const WorkoutModal = ({ session, profile, onClose, onWorkoutAdded }) => {
 
     return (
         <div className="fixed inset-0 bg-slate-900/40 backdrop-blur-sm flex items-center justify-center z-50 p-4 animate-fade-in">
-            <div className="bg-white w-full max-w-md rounded-[2rem] p-8 shadow-2xl relative">
-                <button onClick={onClose} className="absolute top-6 right-6 p-2 text-slate-400"><X size={20} /></button>
+            <div className="bg-white w-full max-w-md rounded-[2rem] p-8 shadow-2xl relative border border-slate-100">
+                <button onClick={onClose} className="absolute top-6 right-6 p-2 text-slate-400 hover:text-slate-600 transition-colors">
+                    <X size={20} />
+                </button>
+
                 <h3 className="text-2xl font-bold text-slate-800 mb-6">Нове тренування</h3>
 
                 <div className="space-y-6">
                     <div>
-                        <label className="text-xs font-bold text-slate-400 uppercase">Вид активності</label>
+                        <label className="text-xs font-bold text-slate-400 uppercase ml-1 tracking-wider">Вид активності</label>
                         <select
                             value={selectedType}
                             onChange={(e) => setSelectedType(e.target.value)}
-                            className="w-full mt-2 p-4 bg-slate-50 rounded-2xl border border-slate-100 outline-none focus:border-emerald-300"
+                            className="w-full mt-2 p-4 bg-slate-50 rounded-2xl border border-slate-100 outline-none focus:border-emerald-300 transition-all cursor-pointer appearance-none"
                         >
-                            <option value="running">Біг</option>
-                            <option value="walking">Ходьба</option>
-                            <option value="cycling">Велосипед</option>
-                            <option value="strength">Силове тренування</option>
-                            <option value="yoga">Йога</option>
+                            <option value="running">🏃 Біг</option>
+                            <option value="walking">🚶 Ходьба</option>
+                            <option value="cycling">🚴 Велосипед</option>
+                            <option value="strength">💪 Силове тренування</option>
+                            <option value="yoga">🧘 Йога</option>
                         </select>
                     </div>
 
-                    <div className="bg-emerald-50 p-6 rounded-[2rem] text-center border border-emerald-100">
-                        <label className="block text-sm font-bold text-emerald-700 mb-2 uppercase">Тривалість (хв)</label>
+                    {/* БЛОК АВТОМАТИЧНОГО РОЗРАХУНКУ */}
+                    <div className="bg-emerald-50 p-6 rounded-[2rem] text-center border border-emerald-100 relative overflow-hidden">
+                        <div className="absolute -right-4 -top-4 w-16 h-16 bg-emerald-200/20 rounded-full blur-xl"></div>
+
+                        <label className="block text-sm font-bold text-emerald-700 mb-2 uppercase tracking-wide">Тривалість (хв)</label>
+
                         <input
                             type="number"
                             value={duration}
                             onChange={(e) => setDuration(e.target.value)}
-                            className="w-full bg-transparent text-4xl font-black text-center outline-none text-emerald-600"
+                            className="w-full bg-transparent text-5xl font-black text-center outline-none text-emerald-600"
+                            min="1"
                         />
-                        <p className="mt-2 text-emerald-600/70 font-medium">Спалено: <b>{calculateBurned()} ккал</b></p>
+
+                        <div className="mt-4 pt-4 border-t border-emerald-200/50">
+                            <p className="text-emerald-600/70 text-sm font-medium">Очікуваний результат:</p>
+                            <div className="flex items-center justify-center gap-2">
+                                <span className="text-3xl font-black text-emerald-700">
+                                    {calculateBurned()}
+                                </span>
+                                <span className="text-sm font-bold text-emerald-600 uppercase">ккал</span>
+                            </div>
+                        </div>
                     </div>
 
-                    <button onClick={handleSave} disabled={loading} className="w-full bg-emerald-500 text-white py-4 rounded-2xl font-bold shadow-lg flex justify-center items-center gap-2">
-                        {loading ? <Loader2 className="animate-spin" /> : 'Зберегти'}
+                    <button
+                        onClick={handleSave}
+                        disabled={loading}
+                        className="w-full bg-emerald-500 hover:bg-emerald-600 text-white py-5 rounded-[1.5rem] font-bold shadow-lg shadow-emerald-200 transition-all active:scale-[0.98] flex justify-center items-center gap-2"
+                    >
+                        {loading ? <Loader2 className="animate-spin" /> : 'Зберегти тренування'}
                     </button>
                 </div>
             </div>
