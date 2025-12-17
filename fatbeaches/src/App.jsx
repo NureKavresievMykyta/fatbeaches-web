@@ -755,10 +755,9 @@ const Dashboard = ({ session, profile, onEditProfile }) => {
                                     </button>
                                     <button
                                         onClick={() => {
-                                            console.log("КНОПКА НАТИСНУТА!"); // З'явиться в консолі (F12)
-                                            alert("Натиснуто! Спроба відкрити аналітику..."); // Вискочить вікно на екрані
-                                            setShowAnalytics(true);
-                                            setMenuOpen(false);
+                                            console.log("Кнопка натиснута!"); // Це допоможе побачити реакцію в консолі браузера (F12)
+                                            setShowAnalytics(true);           // Активуємо показ аналітики
+                                            setMenuOpen(false);               // Закриваємо випадаюче меню
                                         }}
                                         className="w-full flex items-center gap-3 p-3 rounded-xl hover:bg-slate-50 text-slate-600 text-sm font-medium transition-colors text-left"
                                     >
