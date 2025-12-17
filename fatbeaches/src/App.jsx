@@ -796,9 +796,9 @@ const Dashboard = ({ session, profile, onEditProfile }) => {
                     onWorkoutAdded={() => setUpdateTrigger(t => t + 1)}
                 />
             )}
-        </div>
-    );
-};
+        </div> // Этот div закрывает основной контейнер Dashboard
+    ); // Эти скобки закрывают return
+}; // Эта скобка закрывает сам компонент Dashboard
 
 function App() {
     const [session, setSession] = useState(null);
