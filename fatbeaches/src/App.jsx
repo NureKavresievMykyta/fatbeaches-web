@@ -7,6 +7,7 @@ import {
     Settings, History, ChevronDown, Search, X
 } from 'lucide-react';
 
+
 const MealCard = ({ title, icon, calories, color, bg, onClick }) => {
     const IconComponent = icon;
     return (
@@ -647,14 +648,22 @@ const ProfileSetup = ({ session, onComplete, onBack, initialData }) => {
 const Dashboard = ({ session, profile, onEditProfile }) => {
     const [menuOpen, setMenuOpen] = useState(false);
     const [showFoodModal, setShowFoodModal] = useState(false);
+    const [showWorkoutModal, setShowWorkoutModal] = useState(false);
+    const [showAnalytics, setShowAnalytics] = useState(false); // Стан для відкриття аналітики
     const [selectedMeal, setSelectedMeal] = useState(null);
     const [consumedCalories, setConsumedCalories] = useState(0);
-    const [burnedCalories, setBurnedCalories] = useState(0); // Новий стан для тренувань
+    const [burnedCalories, setBurnedCalories] = useState(0);
     const [mealStats, setMealStats] = useState({ breakfast: 0, lunch: 0, dinner: 0, snack: 0 });
     const [updateTrigger, setUpdateTrigger] = useState(0);
     const menuRef = useRef(null);
-    const [showWorkoutModal, setShowWorkoutModal] = useState(false);
 
+    // Функція для відкриття модального вікна їжі
+    const openFoodModal = (mealType) => {
+        setSelectedMeal(mealType);
+        setShowFoodModal(true);
+    };
+
+    // Завантаження статистики їжі та спорту за сьогодні
     useEffect(() => {
         let isMounted = true;
         const loadStats = async () => {
@@ -662,34 +671,31 @@ const Dashboard = ({ session, profile, onEditProfile }) => {
             const startTime = `${today}T00:00:00`;
             const endTime = `${today}T23:59:59`;
 
-            // 1. Завантаження їжі
-            const { data: foodData } = await supabase
-                .from('food_entries')
-                .select('quantity_grams, meal_type, food_items(calories)')
-                .eq('user_id', session.user.id)
-                .gte('date_time', startTime)
-                .lte('date_time', endTime);
-
-            // 2. Завантаження тренувань
-            const { data: workoutData } = await supabase
-                .from('workout_entries')
-                .select('calories_burned_estimated')
-                .eq('user_id', session.user.id)
-                .gte('date_time', startTime)
-                .lte('date_time', endTime);
+            const [foodRes, workoutRes] = await Promise.all([
+                supabase.from('food_entries')
+                    .select('quantity_grams, meal_type, food_items(calories)')
+                    .eq('user_id', session.user.id)
+                    .gte('date_time', startTime)
+                    .lte('date_time', endTime),
+                supabase.from('workout_entries')
+                    .select('calories_burned_estimated')
+                    .eq('user_id', session.user.id)
+                    .gte('date_time', startTime)
+                    .lte('date_time', endTime)
+            ]);
 
             if (isMounted) {
-                // Обробка статистики їжі
                 let totalConsumed = 0;
                 const stats = { breakfast: 0, lunch: 0, dinner: 0, snack: 0 };
-                foodData?.forEach(entry => {
+
+                foodRes.data?.forEach(entry => {
                     const cals = Math.round(entry.food_items.calories * (entry.quantity_grams / 100));
                     if (stats[entry.meal_type] !== undefined) stats[entry.meal_type] += cals;
                     totalConsumed += cals;
                 });
 
-                // Обробка статистики тренувань
-                const totalBurned = workoutData?.reduce((acc, curr) => acc + (curr.calories_burned_estimated || 0), 0) || 0;
+                const totalBurned = workoutRes.data?.reduce((acc, curr) =>
+                    acc + (curr.calories_burned_estimated || 0), 0) || 0;
 
                 setConsumedCalories(totalConsumed);
                 setBurnedCalories(totalBurned);
@@ -701,6 +707,7 @@ const Dashboard = ({ session, profile, onEditProfile }) => {
         return () => { isMounted = false; };
     }, [session.user.id, updateTrigger]);
 
+    // Закриття випадаючого меню при кліку зовні
     useEffect(() => {
         const handleClickOutside = (event) => {
             if (menuRef.current && !menuRef.current.contains(event.target)) {
@@ -711,14 +718,9 @@ const Dashboard = ({ session, profile, onEditProfile }) => {
         return () => document.removeEventListener("mousedown", handleClickOutside);
     }, []);
 
-    const openFoodModal = (mealType) => {
-        setSelectedMeal(mealType);
-        setShowFoodModal(true);
-    };
-
-    // Розрахунок чистого залишку
+    // Розрахунки для хедера та шкали прогресу
     const dailyGoal = profile?.daily_calories_goal || 2000;
-    const netCalories = consumedCalories - burnedCalories;
+    const netCalories = consumedCalories - burnedCalories; // "Чисті" калорії
     const remainingCalories = Math.max(0, dailyGoal - netCalories);
     const progressPercent = Math.round((netCalories / dailyGoal) * 100);
 
@@ -737,19 +739,26 @@ const Dashboard = ({ session, profile, onEditProfile }) => {
                     </div>
 
                     <div className="relative" ref={menuRef}>
-                        <button onClick={() => setMenuOpen(!menuOpen)} className="flex items-center gap-2 bg-slate-50 py-2 px-3 rounded-full hover:bg-slate-100 transition-colors border border-slate-100">
-                            <span className="text-sm font-semibold text-slate-700">{session.user.user_metadata.name || session.user.email.split('@')[0]}</span>
+                        <button onClick={() => setMenuOpen(!menuOpen)} className="flex items-center gap-2 bg-slate-50 py-2 px-3 rounded-full hover:bg-slate-100 transition-colors border border-slate-100 shadow-sm">
+                            <span className="text-sm font-semibold text-slate-700">
+                                {session.user.user_metadata.name || session.user.email.split('@')[0]}
+                            </span>
                             <ChevronDown size={16} className={`text-slate-400 transition-transform ${menuOpen ? 'rotate-180' : ''}`} />
                         </button>
 
                         {menuOpen && (
-                            <div className="absolute right-0 top-12 w-56 bg-white rounded-2xl shadow-xl border border-slate-100 p-2 animate-fade-in z-50">
+                            <div className="absolute right-0 top-12 w-56 bg-white rounded-2xl shadow-xl border border-slate-100 p-2 z-50 animate-fade-in">
                                 <div className="p-2">
-                                    <button onClick={() => onEditProfile()} className="w-full flex items-center gap-3 p-3 rounded-xl hover:bg-slate-50 text-slate-600 text-sm font-medium transition-colors text-left">
+                                    <button onClick={() => { onEditProfile(); setMenuOpen(false); }} className="w-full flex items-center gap-3 p-3 rounded-xl hover:bg-slate-50 text-slate-600 text-sm font-medium transition-colors text-left">
                                         <Settings size={18} className="text-emerald-500" /> Налаштування профілю
                                     </button>
-                                    <button className="w-full flex items-center gap-3 p-3 rounded-xl hover:bg-slate-50 text-slate-600 text-sm font-medium transition-colors text-left">
-                                        <History size={18} className="text-blue-500" /> Історія тренувань
+
+                                    {/* ПІДВ'ЯЗАНА КНОПКА АНАЛІТИКИ */}
+                                    <button
+                                        onClick={() => { setShowAnalytics(true); setMenuOpen(false); }}
+                                        className="w-full flex items-center gap-3 p-3 rounded-xl hover:bg-slate-50 text-slate-600 text-sm font-medium transition-colors text-left"
+                                    >
+                                        <History size={18} className="text-blue-500" /> Аналітика та прогрес
                                     </button>
                                 </div>
                                 <div className="h-px bg-slate-50 my-1"></div>
@@ -763,95 +772,92 @@ const Dashboard = ({ session, profile, onEditProfile }) => {
                     </div>
                 </div>
 
-                {/* ОНОВЛЕНИЙ ВІДЖЕТ СТАТИСТИКИ */}
+                {/* Віджет статистики з трьома колонками */}
                 <div className="bg-gradient-to-br from-emerald-500 to-emerald-600 text-white p-7 rounded-[2.5rem] shadow-xl shadow-emerald-200 relative overflow-hidden">
                     <div className="absolute -right-10 -top-10 w-48 h-48 bg-white opacity-10 rounded-full blur-3xl"></div>
 
-                    {/* ТРИ КОЛОНКИ: З'їдено, Спорт, Залишок */}
-                    <div className="relative z-10 grid grid-cols-3 gap-2 mb-8 bg-black/10 p-4 rounded-3xl backdrop-blur-sm border border-white/10">
-                        <div className="text-center border-r border-white/10">
-                            <p className="text-[10px] uppercase font-black text-emerald-200 mb-1">З'їдено</p>
+                    <div className="relative z-10 grid grid-cols-3 gap-2 mb-8 bg-black/10 p-4 rounded-3xl backdrop-blur-sm border border-white/10 text-center">
+                        <div className="border-r border-white/10">
+                            <p className="text-[10px] uppercase font-black text-emerald-200 mb-1 tracking-tighter">З'їдено</p>
                             <p className="text-xl font-bold">{consumedCalories}</p>
                         </div>
-                        <div className="text-center border-r border-white/10">
-                            <p className="text-[10px] uppercase font-black text-emerald-200 mb-1">Спорт</p>
+                        <div className="border-r border-white/10">
+                            <p className="text-[10px] uppercase font-black text-emerald-200 mb-1 tracking-tighter">Спорт</p>
                             <p className="text-xl font-bold text-orange-300">-{burnedCalories}</p>
                         </div>
-                        <div className="text-center">
-                            <p className="text-[10px] uppercase font-black text-emerald-200 mb-1">Залишок</p>
+                        <div>
+                            <p className="text-[10px] uppercase font-black text-emerald-200 mb-1 tracking-tighter">Залишок</p>
                             <p className="text-xl font-bold">{remainingCalories}</p>
                         </div>
                     </div>
 
                     <div className="relative z-10 flex justify-between items-end mb-4">
                         <div>
-                            <p className="text-emerald-100 text-sm font-medium mb-1 flex items-center gap-2"><Activity size={16} /> Денний баланс</p>
+                            <p className="text-emerald-100 text-sm font-medium mb-1 flex items-center gap-2 font-bold uppercase tracking-wider"><Activity size={16} /> Баланс дня</p>
                             <h2 className="text-5xl font-bold tracking-tight">{netCalories}</h2>
                         </div>
                         <div className="text-right">
-                            <p className="text-emerald-50 text-xs mb-1 font-bold uppercase tracking-widest opacity-70">Ціль</p>
+                            <p className="text-emerald-50 text-xs mb-1 font-bold uppercase opacity-70">Ціль</p>
                             <p className="font-bold text-lg">{dailyGoal}</p>
                         </div>
                     </div>
 
-                    <div className="relative">
-                        <div className="flex justify-between text-xs text-emerald-100 mb-2 font-bold uppercase tracking-wider">
-                            <span>Прогрес</span>
-                            <span>{progressPercent}%</span>
-                        </div>
-                        <div className="bg-emerald-800/30 h-4 rounded-full overflow-hidden backdrop-blur-sm p-1">
-                            <div
-                                className="bg-white h-full rounded-full transition-all duration-700 ease-out shadow-sm"
-                                style={{ width: `${Math.min(100, progressPercent)}%` }}
-                            ></div>
-                        </div>
+                    <div className="relative h-4 bg-emerald-800/30 rounded-full overflow-hidden p-1 shadow-inner">
+                        <div
+                            className="bg-white h-full rounded-full transition-all duration-700 ease-out shadow-sm"
+                            style={{ width: `${Math.min(100, progressPercent)}%` }}
+                        ></div>
                     </div>
                 </div>
             </header>
 
             <main className="px-6 space-y-6 relative z-10">
+                {/* Кнопка додавання тренування */}
                 <button
                     onClick={() => setShowWorkoutModal(true)}
-                    className="w-full bg-blue-600 text-white p-6 rounded-[2rem] shadow-lg shadow-blue-100 flex items-center justify-between group hover:bg-blue-700 transition-all active:scale-[0.98]"
+                    className="w-full bg-blue-600 text-white p-6 rounded-[2rem] shadow-lg shadow-blue-100 flex items-center justify-between group hover:bg-blue-700 transition-all active:scale-95"
                 >
-                    <div className="flex items-center gap-4">
-                        <div className="bg-white/20 p-3 rounded-2xl text-white">
+                    <div className="flex items-center gap-4 text-left">
+                        <div className="bg-white/20 p-3 rounded-2xl text-white shadow-inner">
                             <Dumbbell size={28} />
                         </div>
-                        <div className="text-left">
+                        <div>
                             <h3 className="text-xl font-bold">Тренування</h3>
-                            <p className="text-blue-100 text-sm">Почати активність</p>
+                            <p className="text-blue-100 text-sm">Додати активність</p>
                         </div>
                     </div>
-                    <div className="bg-white text-blue-600 p-3 rounded-full group-hover:scale-110 transition-transform">
-                        <ArrowRight size={20} />
-                    </div>
+                    <ArrowRight size={20} className="group-hover:translate-x-1 transition-transform" />
                 </button>
 
-                <div>
-                    <h2 className="text-xl font-bold text-slate-800 mb-4">Прийоми їжі</h2>
+                <div className="space-y-4">
+                    <h2 className="text-xl font-bold text-slate-800">Прийоми їжі</h2>
                     <div className="grid grid-cols-2 gap-4">
-                        <MealCard onClick={() => openFoodModal('breakfast')} title="Сніданок" icon={Sun} calories={mealStats.breakfast} color="bg-orange-400" bg="bg-orange-400" />
-                        <MealCard onClick={() => openFoodModal('lunch')} title="Обід" icon={Utensils} calories={mealStats.lunch} color="bg-emerald-400" bg="bg-emerald-400" />
-                        <MealCard onClick={() => openFoodModal('dinner')} title="Вечеря" icon={Moon} calories={mealStats.dinner} color="bg-indigo-400" bg="bg-indigo-400" />
-                        <MealCard onClick={() => openFoodModal('snack')} title="Перекус" icon={Coffee} calories={mealStats.snack} color="bg-pink-400" bg="bg-pink-400" />
+                        <MealCard onClick={() => openFoodModal('breakfast')} title="Сніданок" icon={Sun} calories={mealStats.breakfast} bg="bg-orange-400" />
+                        <MealCard onClick={() => openFoodModal('lunch')} title="Обід" icon={Utensils} calories={mealStats.lunch} bg="bg-emerald-400" />
+                        <MealCard onClick={() => openFoodModal('dinner')} title="Вечеря" icon={Moon} calories={mealStats.dinner} bg="bg-indigo-400" />
+                        <MealCard onClick={() => openFoodModal('snack')} title="Перекус" icon={Coffee} calories={mealStats.snack} bg="bg-pink-400" />
                     </div>
                 </div>
 
-                <div>
-                    <h2 className="text-xl font-bold text-slate-800 mb-4">Параметри</h2>
-                    <div className="bg-white p-6 rounded-[2rem] shadow-sm border border-slate-100 flex items-center justify-between transition-all hover:shadow-md">
-                        <div className="flex items-center gap-4">
-                            <div className="p-4 bg-purple-50 text-purple-500 rounded-2xl"><Scale size={24} /></div>
-                            <div>
-                                <p className="text-xs text-slate-400 font-bold uppercase tracking-wider">Вага</p>
-                                <p className="text-2xl font-bold text-slate-800">{profile?.weight_kg || '--'} <span className="text-sm text-slate-400 font-normal">кг</span></p>
-                            </div>
-                        </div>
+                {/* Показник ваги */}
+                <div className="bg-white p-6 rounded-[2rem] shadow-sm border border-slate-100 flex items-center gap-4 transition-all hover:shadow-md">
+                    <div className="p-4 bg-purple-50 text-purple-500 rounded-2xl"><Scale size={24} /></div>
+                    <div>
+                        <p className="text-xs text-slate-400 font-bold uppercase tracking-wider">Вага</p>
+                        <p className="text-2xl font-bold text-slate-800">{profile?.weight_kg || '--'} кг</p>
                     </div>
                 </div>
             </main>
 
+            {/* ВІКНО АНАЛІТИКИ (Графіки) */}
+            {showAnalytics && (
+                <AnalyticsView
+                    session={session}
+                    onClose={() => setShowAnalytics(false)}
+                />
+            )}
+
+            {/* ВІКНО ДОДАВАННЯ ЇЖІ */}
             {showFoodModal && (
                 <FoodModal
                     session={session}
@@ -861,6 +867,7 @@ const Dashboard = ({ session, profile, onEditProfile }) => {
                 />
             )}
 
+            {/* ВІКНО ДОДАВАННЯ СПОРТУ */}
             {showWorkoutModal && (
                 <WorkoutModal
                     session={session}
@@ -872,6 +879,40 @@ const Dashboard = ({ session, profile, onEditProfile }) => {
         </div>
     );
 };
+
+// Допоміжний компонент для карток їжі
+const MealCard = ({ title, icon: Icon, calories, bg, onClick }) => (
+    <button
+        onClick={onClick}
+        className="bg-white p-5 rounded-[2rem] shadow-sm border border-slate-100 flex flex-col items-center text-center gap-3 transition-all hover:shadow-md active:scale-95"
+    >
+        <div className={`p-3 rounded-2xl text-white shadow-sm ${bg}`}>
+            <Icon size={24} />
+        </div>
+        <div>
+            <p className="text-[10px] font-black text-slate-400 uppercase tracking-widest mb-1">{title}</p>
+            <p className="text-xl font-bold text-slate-800">{calories} <span className="text-[10px] text-slate-400 font-medium">ккал</span></p>
+        </div>
+    </button>
+);
+
+export default Dashboard;
+
+// Допоміжний компонент для карток їжі
+const MealCard = ({ title, icon: Icon, calories, bg, onClick }) => (
+    <button
+        onClick={onClick}
+        className="bg-white p-5 rounded-[2rem] shadow-sm border border-slate-100 flex flex-col items-center text-center gap-3 transition-all hover:shadow-md active:scale-95"
+    >
+        <div className={`p-3 rounded-2xl text-white ${bg}`}>
+            <Icon size={24} />
+        </div>
+        <div>
+            <p className="text-xs font-bold text-slate-400 uppercase tracking-widest">{title}</p>
+            <p className="text-xl font-bold text-slate-800">{calories} <span className="text-[10px] text-slate-400">ккал</span></p>
+        </div>
+    </button>
+);
 
 function App() {
     const [session, setSession] = useState(null);
