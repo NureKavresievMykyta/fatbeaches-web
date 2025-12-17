@@ -887,21 +887,6 @@ const Dashboard = ({ session, profile, onEditProfile }) => {
     ); // <-- ТУТ ЗАКІНЧУЄТЬСЯ RETURN
 }; // <-- ТУТ ЗАКІНЧУЄТЬСЯ КОМПОНЕНТ
 
-const MealCard = ({ title, icon: Icon, calories, bg, onClick }) => (
-    <button
-        onClick={onClick}
-        className="bg-white p-5 rounded-[2rem] shadow-sm border border-slate-100 flex flex-col items-center text-center gap-3 transition-all hover:shadow-md active:scale-95"
-    >
-        <div className={`p-3 rounded-2xl text-white shadow-sm ${bg}`}>
-            <Icon size={24} />
-        </div>
-        <div>
-            <p className="text-[10px] font-black text-slate-400 uppercase tracking-widest mb-1">{title}</p>
-            <p className="text-xl font-bold text-slate-800">{calories} <span className="text-[10px] text-slate-400 font-medium">ккал</span></p>
-        </div>
-    </button>
-);
-
 // 3. Експорт завжди робимо в самому кінці файлу
 
 function App() {
