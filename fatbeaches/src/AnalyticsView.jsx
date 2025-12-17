@@ -1,4 +1,4 @@
-import React, { useEffect, useState } from 'react';
+п»їimport React, { useEffect, useState } from 'react';
 import { ArrowLeft, Activity, Utensils } from 'lucide-react';
 import { supabase } from './supabase';
 
@@ -6,12 +6,24 @@ const AnalyticsView = ({ session, onClose }) => {
     const [data, setData] = useState([]);
     const [loading, setLoading] = useState(true);
 
+    // РњР°СЃРёРІ РЅР°Р·РІ РґРЅС–РІ Р»Р°С‚РёРЅРёС†РµСЋ, С‰РѕР± СѓРЅРёРєРЅСѓС‚Рё РїРѕРјРёР»РѕРє РєРѕРґСѓРІР°РЅРЅСЏ, 
+    // Р· РїРѕРґР°Р»СЊС€РёРј РїРµСЂРµС‚РІРѕСЂРµРЅРЅСЏРј РІ СѓРєСЂР°С—РЅСЃСЊРєСѓ С‡РµСЂРµР· switch
+    const getDayName = (date) => {
+        const days = ['Nd', 'Pn', 'Vt', 'Sr', 'Cht', 'Pt', 'Sb'];
+        const dayIndex = date.getDay();
+        const namesUA = {
+            'Nd': 'РќРґ', 'Pn': 'РџРЅ', 'Vt': 'Р’С‚', 'Sr': 'РЎСЂ',
+            'Cht': 'Р§С‚', 'Pt': 'РџС‚', 'Sb': 'РЎР±'
+        };
+        return namesUA[days[dayIndex]];
+    };
+
     useEffect(() => {
         const fetchAnalytics = async () => {
             try {
-                // Определяем временной промежуток (последние 7 дней)
                 const last7Days = new Date();
-                last7Days.setDate(last7Days.getDate() - 7);
+                last7Days.setHours(0, 0, 0, 0);
+                last7Days.setDate(last7Days.getDate() - 6);
 
                 const [workoutsRes, foodRes] = await Promise.all([
                     supabase.from('workout_entries')
@@ -24,24 +36,20 @@ const AnalyticsView = ({ session, onClose }) => {
                         .gte('date_time', last7Days.toISOString())
                 ]);
 
-                // Создаем структуру данных для последних 7 дней
                 const dailyData = {};
+                // РЎС‚РІРѕСЂСЋС”РјРѕ РјР°СЃРёРІ Р·Р° РѕСЃС‚Р°РЅРЅС– 7 РґРЅС–РІ (РІРєР»СЋС‡Р°СЋС‡Рё СЃСЊРѕРіРѕРґРЅС–)
                 for (let i = 0; i < 7; i++) {
                     const date = new Date();
                     date.setDate(date.getDate() - i);
-
-                    // Ключ в формате YYYY-MM-DD для точного сравнения без учета времени
                     const dateKey = date.toISOString().split('T')[0];
-                    const dayName = date.toLocaleDateString('uk-UA', { weekday: 'short' });
-
                     dailyData[dateKey] = {
-                        name: dayName,
+                        name: getDayName(date),
                         consumed: 0,
                         burned: 0
                     };
                 }
 
-                // Обработка данных о еде
+                // РћР±СЂРѕР±РєР° С—Р¶С–
                 foodRes.data?.forEach(entry => {
                     const entryKey = entry.date_time.split('T')[0];
                     if (dailyData[entryKey] && entry.food_items) {
@@ -50,7 +58,7 @@ const AnalyticsView = ({ session, onClose }) => {
                     }
                 });
 
-                // Обработка данных о тренировках
+                // РћР±СЂРѕР±РєР° С‚СЂРµРЅСѓРІР°РЅСЊ
                 workoutsRes.data?.forEach(entry => {
                     const entryKey = entry.date_time.split('T')[0];
                     if (dailyData[entryKey]) {
@@ -58,10 +66,9 @@ const AnalyticsView = ({ session, onClose }) => {
                     }
                 });
 
-                // Превращаем объект в массив и сортируем от прошлого к настоящему
                 setData(Object.values(dailyData).reverse());
             } catch (error) {
-                console.error("Помилка завантаження даних:", error);
+                console.error("Error loading data:", error);
             } finally {
                 setLoading(false);
             }
@@ -72,14 +79,13 @@ const AnalyticsView = ({ session, onClose }) => {
 
     if (loading) return (
         <div className="fixed inset-0 bg-white z-[100] flex items-center justify-center font-medium text-slate-500">
-            Завантаження аналітики...
+            Р—Р°РІР°РЅС‚Р°Р¶РµРЅРЅСЏ...
         </div>
     );
 
     return (
         <div className="fixed inset-0 bg-slate-100 z-[80] overflow-y-auto p-0 sm:p-4">
             <div className="max-w-md mx-auto bg-white sm:rounded-[2.5rem] shadow-2xl min-h-screen">
-                {/* Шапка */}
                 <header className="p-6 flex items-center gap-4 border-b sticky top-0 bg-white z-10 sm:rounded-t-[2.5rem]">
                     <button
                         onClick={onClose}
@@ -87,49 +93,45 @@ const AnalyticsView = ({ session, onClose }) => {
                     >
                         <ArrowLeft size={20} className="text-slate-600" />
                     </button>
-                    <h2 className="text-xl font-bold text-slate-800">Аналітика тижня</h2>
+                    <h2 className="text-xl font-bold text-slate-800">РђРЅР°Р»С–С‚РёРєР° С‚РёР¶РЅСЏ</h2>
                 </header>
 
-                {/* Список дней */}
-                <div className="p-6 space-y-4">
+                <div className="p-6 space-y-4 text-slate-800">
                     {data.map((day, idx) => {
-                        // Рассчитываем масштаб (база 2500 ккал для визуальной гармонии)
-                        const maxVal = Math.max(day.consumed, day.burned, 2500);
+                        const maxVal = Math.max(day.consumed, day.burned, 2000);
 
                         return (
-                            <div key={idx} className="bg-white p-5 rounded-[2rem] border border-slate-100 shadow-sm">
+                            <div key={idx} className="bg-white p-5 rounded-[2rem] border border-slate-100 shadow-sm transition-all hover:shadow-md">
                                 <div className="flex justify-between items-center mb-4">
-                                    <span className="font-bold text-slate-700 capitalize text-lg">{day.name}</span>
+                                    <span className="font-bold text-slate-700 text-lg">{day.name}</span>
                                     <div className="flex gap-4 text-xs font-bold uppercase">
                                         <div className="flex flex-col items-end">
                                             <span className="text-emerald-600">+{day.consumed}</span>
-                                            <span className="text-[10px] text-slate-400">ккал</span>
+                                            <span className="text-[10px] text-slate-400 font-medium tracking-tight">РєРєР°Р»</span>
                                         </div>
                                         <div className="flex flex-col items-end">
                                             <span className="text-blue-600">-{day.burned}</span>
-                                            <span className="text-[10px] text-slate-400">ккал</span>
+                                            <span className="text-[10px] text-slate-400 font-medium tracking-tight">РєРєР°Р»</span>
                                         </div>
                                     </div>
                                 </div>
 
                                 <div className="space-y-3">
-                                    {/* Шкала еды */}
                                     <div className="flex items-center gap-3">
                                         <Utensils size={14} className="text-emerald-500 shrink-0" />
                                         <div className="relative flex-1 h-2.5 bg-slate-100 rounded-full overflow-hidden">
                                             <div
-                                                className="absolute h-full bg-emerald-500 rounded-full transition-all duration-700"
+                                                className="absolute h-full bg-emerald-500 rounded-full transition-all duration-700 ease-out"
                                                 style={{ width: `${Math.min((day.consumed / maxVal) * 100, 100)}%` }}
                                             />
                                         </div>
                                     </div>
 
-                                    {/* Шкала спорта */}
                                     <div className="flex items-center gap-3">
                                         <Activity size={14} className="text-blue-500 shrink-0" />
                                         <div className="relative flex-1 h-2.5 bg-slate-100 rounded-full overflow-hidden">
                                             <div
-                                                className="absolute h-full bg-blue-500 rounded-full transition-all duration-700"
+                                                className="absolute h-full bg-blue-500 rounded-full transition-all duration-700 ease-out"
                                                 style={{ width: `${Math.min((day.burned / maxVal) * 100, 100)}%` }}
                                             />
                                         </div>
