@@ -261,22 +261,22 @@ const FoodModal = ({ session, mealType, onClose, onFoodAdded }) => {
 
 const WorkoutModal = ({ session, profile, onClose, onWorkoutAdded }) => {
     const [duration, setDuration] = useState(30);
-    // Тепер за замовчуванням стоїть ID "1" (Біг)
-    const [selectedTypeId, setSelectedTypeId] = useState(1);
+    const [selectedType, setSelectedType] = useState('running');
     const [loading, setLoading] = useState(false);
 
-    // Ключі тепер — числа (ID), які підуть у базу
-    const WORKOUT_TYPES = {
-        1: { name: 'Біг', met: 8.0 },
-        2: { name: 'Ходьба', met: 3.5 },
-        3: { name: 'Велосипед', met: 6.0 },
-        4: { name: 'Силове тренування', met: 5.0 },
-        5: { name: 'Йога', met: 2.5 }
+    
+    const MET_VALUES = {
+        running: 8.0,   
+        walking: 3.5,   
+        cycling: 6.0,  
+        strength: 5.0,  
+        yoga: 2.5       
     };
 
+    
     const calculateBurned = () => {
         const weight = profile?.weight_kg || 70;
-        const met = WORKOUT_TYPES[selectedTypeId].met || 3.0;
+        const met = MET_VALUES[selectedType] || 3.0;
         return Math.round((met * weight * 3.5) / 200 * duration);
     };
 
@@ -286,10 +286,9 @@ const WorkoutModal = ({ session, profile, onClose, onWorkoutAdded }) => {
 
         const { error } = await supabase.from('workout_entries').insert({
             user_id: session.user.id,
-            // Передаємо ID як число (bigint)
-            workout_item_id: parseInt(selectedTypeId),
+            workout_item_id: selectedType, 
             duration_minutes: parseInt(duration),
-            calories_burned_estimated: burned,
+            calories_burned_estimated: burned, 
             date_time: new Date().toISOString()
         });
 
@@ -312,14 +311,15 @@ const WorkoutModal = ({ session, profile, onClose, onWorkoutAdded }) => {
                     <div>
                         <label className="text-xs font-bold text-slate-400 uppercase">Вид активності</label>
                         <select
-                            value={selectedTypeId}
-                            // Перетворюємо рядок з value у число при виборі
-                            onChange={(e) => setSelectedTypeId(parseInt(e.target.value))}
+                            value={selectedType}
+                            onChange={(e) => setSelectedType(e.target.value)}
                             className="w-full mt-2 p-4 bg-slate-50 rounded-2xl border border-slate-100 outline-none focus:border-emerald-300"
                         >
-                            {Object.entries(WORKOUT_TYPES).map(([id, info]) => (
-                                <option key={id} value={id}>{info.name}</option>
-                            ))}
+                            <option value="running">Біг</option>
+                            <option value="walking">Ходьба</option>
+                            <option value="cycling">Велосипед</option>
+                            <option value="strength">Силове тренування</option>
+                            <option value="yoga">Йога</option>
                         </select>
                     </div>
 
