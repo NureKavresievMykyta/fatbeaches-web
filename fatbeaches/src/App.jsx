@@ -730,7 +730,7 @@ const Dashboard = ({ session, profile, onEditProfile }) => {
                 </div>
             </header>
 
-            <main className="px-6 space-y-6">
+            <main className="px-6 space-y-6 relative z-10">
                 {/* НАЧАЛО ВСТАВКИ */}
                 <button
                     onClick={() => {
