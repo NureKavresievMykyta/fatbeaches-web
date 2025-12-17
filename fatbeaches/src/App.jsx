@@ -1,12 +1,14 @@
-﻿import React, { useState, useEffect, useRef, useCallback } from 'react';
+﻿import React, { useEffect, useState, useRef } from 'react';
 import { supabase } from './supabase';
 import {
-    Leaf, ArrowRight, User, Activity, Scale,
-    Coffee, Utensils, Moon, Sun, Plus, LogOut, Loader2,
-    Dumbbell, ShieldCheck, AlertCircle, ChevronLeft,
-    Settings, History, ChevronDown, Search, X
+    User, ChevronDown, Settings, History, LogOut, Activity,
+    Dumbbell, ArrowRight, Sun, Utensils, Moon, Coffee, Scale
 } from 'lucide-react';
+import MealCard from './MealCard';
+import FoodModal from './FoodModal';
+import WorkoutModal from './WorkoutModal';
 import AnalyticsView from './AnalyticsView';
+
 
 
 const MealCard = ({ title, icon, calories, color, bg, onClick }) => {
@@ -650,7 +652,7 @@ const Dashboard = ({ session, profile, onEditProfile }) => {
     const [menuOpen, setMenuOpen] = useState(false);
     const [showFoodModal, setShowFoodModal] = useState(false);
     const [showWorkoutModal, setShowWorkoutModal] = useState(false);
-    const [showAnalytics, setShowAnalytics] = useState(false); // Стан для відкриття аналітики
+    const [showAnalytics, setShowAnalytics] = useState(false);
     const [selectedMeal, setSelectedMeal] = useState(null);
     const [consumedCalories, setConsumedCalories] = useState(0);
     const [burnedCalories, setBurnedCalories] = useState(0);
@@ -658,13 +660,11 @@ const Dashboard = ({ session, profile, onEditProfile }) => {
     const [updateTrigger, setUpdateTrigger] = useState(0);
     const menuRef = useRef(null);
 
-    // Функція для відкриття модального вікна їжі
     const openFoodModal = (mealType) => {
         setSelectedMeal(mealType);
         setShowFoodModal(true);
     };
 
-    // Завантаження статистики їжі та спорту за сьогодні
     useEffect(() => {
         let isMounted = true;
         const loadStats = async () => {
@@ -695,8 +695,7 @@ const Dashboard = ({ session, profile, onEditProfile }) => {
                     totalConsumed += cals;
                 });
 
-                const totalBurned = workoutRes.data?.reduce((acc, curr) =>
-                    acc + (curr.calories_burned_estimated || 0), 0) || 0;
+                const totalBurned = workoutRes.data?.reduce((acc, curr) => acc + (curr.calories_burned_estimated || 0), 0) || 0;
 
                 setConsumedCalories(totalConsumed);
                 setBurnedCalories(totalBurned);
@@ -708,7 +707,6 @@ const Dashboard = ({ session, profile, onEditProfile }) => {
         return () => { isMounted = false; };
     }, [session.user.id, updateTrigger]);
 
-    // Закриття випадаючого меню при кліку зовні
     useEffect(() => {
         const handleClickOutside = (event) => {
             if (menuRef.current && !menuRef.current.contains(event.target)) {
@@ -719,9 +717,8 @@ const Dashboard = ({ session, profile, onEditProfile }) => {
         return () => document.removeEventListener("mousedown", handleClickOutside);
     }, []);
 
-    // Розрахунки для хедера та шкали прогресу
     const dailyGoal = profile?.daily_calories_goal || 2000;
-    const netCalories = consumedCalories - burnedCalories; // "Чисті" калорії
+    const netCalories = consumedCalories - burnedCalories;
     const remainingCalories = Math.max(0, dailyGoal - netCalories);
     const progressPercent = Math.round((netCalories / dailyGoal) * 100);
 
@@ -750,24 +747,19 @@ const Dashboard = ({ session, profile, onEditProfile }) => {
                         {menuOpen && (
                             <div className="absolute right-0 top-12 w-56 bg-white rounded-2xl shadow-xl border border-slate-100 p-2 z-50 animate-fade-in">
                                 <div className="p-2">
-                                    <button onClick={() => { onEditProfile(); setMenuOpen(false); }} className="w-full flex items-center gap-3 p-3 rounded-xl hover:bg-slate-50 text-slate-600 text-sm font-medium transition-colors text-left">
+                                    <button onClick={() => { onEditProfile(); setMenuOpen(false); }} className="w-full flex items-center gap-3 p-3 rounded-xl hover:bg-slate-50 text-slate-600 text-sm font-medium text-left">
                                         <Settings size={18} className="text-emerald-500" /> Налаштування профілю
                                     </button>
-
-                                    {/* ПІДВ'ЯЗАНА КНОПКА АНАЛІТИКИ */}
                                     <button
-                                        onClick={() => {
-                                            setShowAnalytics(true); // Відкриваємо аналітику
-                                            setMenuOpen(false);      // Закриваємо меню
-                                        }}
-                                        className="w-full flex items-center gap-3 p-3 rounded-xl hover:bg-slate-50 text-slate-600 text-sm font-medium transition-colors text-left"
+                                        onClick={() => { setShowAnalytics(true); setMenuOpen(false); }}
+                                        className="w-full flex items-center gap-3 p-3 rounded-xl hover:bg-slate-50 text-slate-600 text-sm font-medium text-left"
                                     >
                                         <History size={18} className="text-blue-500" /> Історія тренувань
                                     </button>
                                 </div>
                                 <div className="h-px bg-slate-50 my-1"></div>
                                 <div className="p-2">
-                                    <button onClick={() => supabase.auth.signOut()} className="w-full flex items-center gap-3 p-3 rounded-xl hover:bg-red-50 text-red-500 text-sm font-medium transition-colors text-left">
+                                    <button onClick={() => supabase.auth.signOut()} className="w-full flex items-center gap-3 p-3 rounded-xl hover:bg-red-50 text-red-500 text-sm font-medium text-left">
                                         <LogOut size={18} /> Вийти
                                     </button>
                                 </div>
@@ -776,7 +768,7 @@ const Dashboard = ({ session, profile, onEditProfile }) => {
                     </div>
                 </div>
 
-                {/* Віджет статистики з трьома колонками */}
+                {/* Віджет статистики */}
                 <div className="bg-gradient-to-br from-emerald-500 to-emerald-600 text-white p-7 rounded-[2.5rem] shadow-xl shadow-emerald-200 relative overflow-hidden">
                     <div className="absolute -right-10 -top-10 w-48 h-48 bg-white opacity-10 rounded-full blur-3xl"></div>
 
@@ -816,7 +808,6 @@ const Dashboard = ({ session, profile, onEditProfile }) => {
             </header>
 
             <main className="px-6 space-y-6 relative z-10">
-                {/* Кнопка додавання тренування */}
                 <button
                     onClick={() => setShowWorkoutModal(true)}
                     className="w-full bg-blue-600 text-white p-6 rounded-[2rem] shadow-lg shadow-blue-100 flex items-center justify-between group hover:bg-blue-700 transition-all active:scale-95"
@@ -843,7 +834,6 @@ const Dashboard = ({ session, profile, onEditProfile }) => {
                     </div>
                 </div>
 
-                {/* Показник ваги */}
                 <div className="bg-white p-6 rounded-[2rem] shadow-sm border border-slate-100 flex items-center gap-4 transition-all hover:shadow-md">
                     <div className="p-4 bg-purple-50 text-purple-500 rounded-2xl"><Scale size={24} /></div>
                     <div>
@@ -853,15 +843,7 @@ const Dashboard = ({ session, profile, onEditProfile }) => {
                 </div>
             </main>
 
-            {/* ВІКНО АНАЛІТИКИ (Графіки) */}
-            {showAnalytics && (
-                <AnalyticsView
-                    session={session}
-                    onClose={() => setShowAnalytics(false)}
-                />
-            )}
-
-            {/* ВІКНО ДОДАВАННЯ ЇЖІ */}
+            {/* Модальні вікна */}
             {showFoodModal && (
                 <FoodModal
                     session={session}
@@ -880,7 +862,6 @@ const Dashboard = ({ session, profile, onEditProfile }) => {
                 />
             )}
 
-            {/* ВІКНО АНАЛІТИКИ ПЕРЕНЕСЕНО СЮДИ, ВСЕРЕДИНУ RETURN */}
             {showAnalytics && (
                 <AnalyticsView
                     session={session}
@@ -888,8 +869,10 @@ const Dashboard = ({ session, profile, onEditProfile }) => {
                 />
             )}
         </div>
-    ); // <-- ТУТ ЗАКІНЧУЄТЬСЯ RETURN
-}; // <-- ТУТ ЗАКІНЧУЄТЬСЯ КОМПОНЕНТ
+    );
+};
+
+export default Dashboard;
 
 const MealCard = ({ title, icon: Icon, calories, bg, onClick }) => (
     <button
