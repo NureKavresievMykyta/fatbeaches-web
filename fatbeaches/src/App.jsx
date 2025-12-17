@@ -259,6 +259,89 @@ const FoodModal = ({ session, mealType, onClose, onFoodAdded }) => {
     );
 };
 
+const WorkoutModal = ({ session, profile, onClose, onWorkoutAdded }) => {
+    const [duration, setDuration] = useState(30);
+    const [selectedType, setSelectedType] = useState('running');
+    const [loading, setLoading] = useState(false);
+
+    // Коэффициенты интенсивности (MET)
+    const MET_VALUES = {
+        running: 8.0,   // Бег
+        walking: 3.5,   // Ходьба
+        cycling: 6.0,   // Велосипед
+        strength: 5.0,  // Силовая
+        yoga: 2.5       // Йога
+    };
+
+    // АВТО-РАСЧЕТ КАЛОРИЙ: (MET * вес * 3.5) / 200 * минуты
+    const calculateBurned = () => {
+        const weight = profile?.weight_kg || 70;
+        const met = MET_VALUES[selectedType] || 3.0;
+        return Math.round((met * weight * 3.5) / 200 * duration);
+    };
+
+    const handleSave = async () => {
+        setLoading(true);
+        const burned = calculateBurned();
+
+        const { error } = await supabase.from('workout_entries').insert({
+            user_id: session.user.id,
+            workout_item_id: selectedType, // Должно быть как в БД
+            duration_minutes: parseInt(duration),
+            calories_burned_estimated: burned, // Должно быть как в БД
+            date_time: new Date().toISOString()
+        });
+
+        if (!error) {
+            onWorkoutAdded();
+            onClose();
+        } else {
+            alert(error.message);
+        }
+        setLoading(false);
+    };
+
+    return (
+        <div className="fixed inset-0 bg-slate-900/40 backdrop-blur-sm flex items-center justify-center z-50 p-4 animate-fade-in">
+            <div className="bg-white w-full max-w-md rounded-[2rem] p-8 shadow-2xl relative">
+                <button onClick={onClose} className="absolute top-6 right-6 p-2 text-slate-400"><X size={20} /></button>
+                <h3 className="text-2xl font-bold text-slate-800 mb-6">Нове тренування</h3>
+
+                <div className="space-y-6">
+                    <div>
+                        <label className="text-xs font-bold text-slate-400 uppercase">Вид активності</label>
+                        <select
+                            value={selectedType}
+                            onChange={(e) => setSelectedType(e.target.value)}
+                            className="w-full mt-2 p-4 bg-slate-50 rounded-2xl border border-slate-100 outline-none focus:border-emerald-300"
+                        >
+                            <option value="running">Біг</option>
+                            <option value="walking">Ходьба</option>
+                            <option value="cycling">Велосипед</option>
+                            <option value="strength">Силове тренування</option>
+                            <option value="yoga">Йога</option>
+                        </select>
+                    </div>
+
+                    <div className="bg-emerald-50 p-6 rounded-[2rem] text-center border border-emerald-100">
+                        <label className="block text-sm font-bold text-emerald-700 mb-2 uppercase">Тривалість (хв)</label>
+                        <input
+                            type="number"
+                            value={duration}
+                            onChange={(e) => setDuration(e.target.value)}
+                            className="w-full bg-transparent text-4xl font-black text-center outline-none text-emerald-600"
+                        />
+                        <p className="mt-2 text-emerald-600/70 font-medium">Спалено: <b>{calculateBurned()} ккал</b></p>
+                    </div>
+
+                    <button onClick={handleSave} disabled={loading} className="w-full bg-emerald-500 text-white py-4 rounded-2xl font-bold shadow-lg flex justify-center items-center gap-2">
+                        {loading ? <Loader2 className="animate-spin" /> : 'Зберегти'}
+                    </button>
+                </div>
+            </div>
+        </div>
+    );
+};
 const AuthPage = () => {
     const [isLogin, setIsLogin] = useState(true);
     const [email, setEmail] = useState('');
@@ -533,7 +616,7 @@ const Dashboard = ({ session, profile, onEditProfile }) => {
     const [mealStats, setMealStats] = useState({ breakfast: 0, lunch: 0, dinner: 0, snack: 0 });
     const [updateTrigger, setUpdateTrigger] = useState(0);
     const menuRef = useRef(null);
-
+    const [showWorkoutModal, setShowWorkoutModal] = useState(false);
     useEffect(() => {
         let isMounted = true;
         const loadCalories = async () => {
@@ -648,7 +731,15 @@ const Dashboard = ({ session, profile, onEditProfile }) => {
             </header>
 
             <main className="px-6 space-y-6">
-                <button className="w-full bg-blue-600 text-white p-6 rounded-[2rem] shadow-lg shadow-blue-200 flex items-center justify-between group hover:bg-blue-700 transition-all">
+                {/* НАЧАЛО ВСТАВКИ */}
+                <button
+                    onClick={() => {
+                        console.log("Кнопка нажата!"); // Теперь ты увидишь это в консоли (F12)
+                        setShowWorkoutModal(true);
+                    }}
+                    className="w-full bg-blue-600 text-white p-6 rounded-[2rem] shadow-lg shadow-blue-200 flex items-center justify-between group hover:bg-blue-700 transition-all"
+                >
+                    {/* КОНЕЦ ВСТАВКИ */}
                     <div className="flex items-center gap-4">
                         <div className="bg-white/20 p-3 rounded-2xl text-white">
                             <Dumbbell size={28} />
@@ -687,12 +778,22 @@ const Dashboard = ({ session, profile, onEditProfile }) => {
                 </div>
             </main>
 
+            {/* Модалки */}
             {showFoodModal && (
                 <FoodModal
                     session={session}
                     mealType={selectedMeal}
                     onClose={() => setShowFoodModal(false)}
                     onFoodAdded={() => setUpdateTrigger(t => t + 1)}
+                />
+            )}
+
+            {showWorkoutModal && (
+                <WorkoutModal
+                    session={session}
+                    profile={profile}
+                    onClose={() => setShowWorkoutModal(false)}
+                    onWorkoutAdded={() => setUpdateTrigger(t => t + 1)}
                 />
             )}
         </div>
