@@ -259,21 +259,27 @@ const FoodModal = ({ session, mealType, onClose, onFoodAdded }) => {
     );
 };
 
+const WORKOUT_TYPES = {
+    running: 1,
+    walking: 2,
+    cycling: 3,
+    strength: 4,
+    yoga: 5
+};
+
 const WorkoutModal = ({ session, profile, onClose, onWorkoutAdded }) => {
     const [duration, setDuration] = useState(30);
     const [selectedType, setSelectedType] = useState('running');
     const [loading, setLoading] = useState(false);
 
-    
     const MET_VALUES = {
-        running: 8.0,   
-        walking: 3.5,   
-        cycling: 6.0,  
-        strength: 5.0,  
-        yoga: 2.5       
+        running: 8.0,
+        walking: 3.5,
+        cycling: 6.0,
+        strength: 5.0,
+        yoga: 2.5
     };
 
-    
     const calculateBurned = () => {
         const weight = profile?.weight_kg || 70;
         const met = MET_VALUES[selectedType] || 3.0;
@@ -282,15 +288,18 @@ const WorkoutModal = ({ session, profile, onClose, onWorkoutAdded }) => {
 
     const handleSave = async () => {
         setLoading(true);
+
         const burned = calculateBurned();
 
-        const { error } = await supabase.from('workout_entries').insert({
-            user_id: session.user.id,
-            workout_item_id: selectedType, 
-            duration_minutes: parseInt(duration),
-            calories_burned_estimated: burned, 
-            date_time: new Date().toISOString()
-        });
+        const { error } = await supabase
+            .from('workout_entries')
+            .insert({
+                user_id: session.user.id,
+                workout_item_id: WORKOUT_TYPES[selectedType],
+                duration_minutes: parseInt(duration, 10),
+                calories_burned_estimated: burned,
+                date_time: new Date().toISOString()
+            });
 
         if (!error) {
             onWorkoutAdded();
@@ -298,6 +307,7 @@ const WorkoutModal = ({ session, profile, onClose, onWorkoutAdded }) => {
         } else {
             alert(error.message);
         }
+
         setLoading(false);
     };
 
