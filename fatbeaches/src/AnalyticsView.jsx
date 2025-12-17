@@ -1,5 +1,5 @@
 import React, { useEffect, useState } from 'react';
-import { ArrowLeft, Activity, TrendingUp, Utensils } from 'lucide-react';
+import { ArrowLeft, Activity, Utensils } from 'lucide-react';
 import { supabase } from './supabase';
 
 const AnalyticsView = ({ session, onClose }) => {
@@ -9,7 +9,7 @@ const AnalyticsView = ({ session, onClose }) => {
     useEffect(() => {
         const fetchAnalytics = async () => {
             try {
-                // Визначаємо часовий проміжок (останні 7 днів)
+                // Определяем временной промежуток (последние 7 дней)
                 const last7Days = new Date();
                 last7Days.setDate(last7Days.getDate() - 7);
 
@@ -24,13 +24,13 @@ const AnalyticsView = ({ session, onClose }) => {
                         .gte('date_time', last7Days.toISOString())
                 ]);
 
-                // Створюємо скелет даних за останні 7 днів
+                // Создаем структуру данных для последних 7 дней
                 const dailyData = {};
                 for (let i = 0; i < 7; i++) {
                     const date = new Date();
                     date.setDate(date.getDate() - i);
 
-                    // Ключ у форматі YYYY-MM-DD для точного співпадіння
+                    // Ключ в формате YYYY-MM-DD для точного сравнения без учета времени
                     const dateKey = date.toISOString().split('T')[0];
                     const dayName = date.toLocaleDateString('uk-UA', { weekday: 'short' });
 
@@ -41,7 +41,7 @@ const AnalyticsView = ({ session, onClose }) => {
                     };
                 }
 
-                // Обробка даних про їжу
+                // Обработка данных о еде
                 foodRes.data?.forEach(entry => {
                     const entryKey = entry.date_time.split('T')[0];
                     if (dailyData[entryKey] && entry.food_items) {
@@ -50,7 +50,7 @@ const AnalyticsView = ({ session, onClose }) => {
                     }
                 });
 
-                // Обробка даних про тренування
+                // Обработка данных о тренировках
                 workoutsRes.data?.forEach(entry => {
                     const entryKey = entry.date_time.split('T')[0];
                     if (dailyData[entryKey]) {
@@ -58,7 +58,7 @@ const AnalyticsView = ({ session, onClose }) => {
                     }
                 });
 
-                // Перетворюємо об'єкт у масив та сортуємо за датою (від минулого до сьогодні)
+                // Превращаем объект в массив и сортируем от прошлого к настоящему
                 setData(Object.values(dailyData).reverse());
             } catch (error) {
                 console.error("Помилка завантаження даних:", error);
@@ -90,16 +90,14 @@ const AnalyticsView = ({ session, onClose }) => {
                     <h2 className="text-xl font-bold text-slate-800">Аналітика тижня</h2>
                 </header>
 
-                {/* Список днів */}
+                {/* Список дней */}
                 <div className="p-6 space-y-4">
                     {data.map((day, idx) => {
-                        // Знаходимо максимум для масштабування шкал (мінімум 1 щоб не ділити на 0)
-                        const maxInDay = Math.max(day.consumed, day.burned, 1);
-                        // Масштабуємо відносно 2500 ккал (середня норма) для кращого візуалу
-                        const scaleBase = Math.max(maxInDay, 2500);
+                        // Рассчитываем масштаб (база 2500 ккал для визуальной гармонии)
+                        const maxVal = Math.max(day.consumed, day.burned, 2500);
 
                         return (
-                            <div key={idx} className="bg-white p-5 rounded-[2rem] border border-slate-100 shadow-sm transition-all hover:shadow-md">
+                            <div key={idx} className="bg-white p-5 rounded-[2rem] border border-slate-100 shadow-sm">
                                 <div className="flex justify-between items-center mb-4">
                                     <span className="font-bold text-slate-700 capitalize text-lg">{day.name}</span>
                                     <div className="flex gap-4 text-xs font-bold uppercase">
@@ -115,24 +113,24 @@ const AnalyticsView = ({ session, onClose }) => {
                                 </div>
 
                                 <div className="space-y-3">
-                                    {/* Шкала їжі (Зелена) */}
+                                    {/* Шкала еды */}
                                     <div className="flex items-center gap-3">
                                         <Utensils size={14} className="text-emerald-500 shrink-0" />
                                         <div className="relative flex-1 h-2.5 bg-slate-100 rounded-full overflow-hidden">
                                             <div
-                                                className="absolute h-full bg-emerald-500 rounded-full transition-all duration-700 ease-out"
-                                                style={{ width: `${(day.consumed / scaleBase) * 100}%` }}
+                                                className="absolute h-full bg-emerald-500 rounded-full transition-all duration-700"
+                                                style={{ width: `${Math.min((day.consumed / maxVal) * 100, 100)}%` }}
                                             />
                                         </div>
                                     </div>
 
-                                    {/* Шкала спорту (Синя) */}
+                                    {/* Шкала спорта */}
                                     <div className="flex items-center gap-3">
                                         <Activity size={14} className="text-blue-500 shrink-0" />
                                         <div className="relative flex-1 h-2.5 bg-slate-100 rounded-full overflow-hidden">
                                             <div
-                                                className="absolute h-full bg-blue-500 rounded-full transition-all duration-700 ease-out"
-                                                style={{ width: `${(day.burned / scaleBase) * 100}%` }}
+                                                className="absolute h-full bg-blue-500 rounded-full transition-all duration-700"
+                                                style={{ width: `${Math.min((day.burned / maxVal) * 100, 100)}%` }}
                                             />
                                         </div>
                                     </div>
@@ -141,14 +139,6 @@ const AnalyticsView = ({ session, onClose }) => {
                         );
                     })}
                 </div>
-
-                {/* Порожній стан */}
-                {data.length === 0 && (
-                    <div className="p-20 text-center text-slate-400">
-                        <Activity className="mx-auto mb-4 opacity-20" size={48} />
-                        <p>Дані за останній тиждень відсутні</p>
-                    </div>
-                )}
             </div>
         </div>
     );
