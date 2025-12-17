@@ -649,39 +649,55 @@ const Dashboard = ({ session, profile, onEditProfile }) => {
     const [showFoodModal, setShowFoodModal] = useState(false);
     const [selectedMeal, setSelectedMeal] = useState(null);
     const [consumedCalories, setConsumedCalories] = useState(0);
+    const [burnedCalories, setBurnedCalories] = useState(0); // Новий стан для тренувань
     const [mealStats, setMealStats] = useState({ breakfast: 0, lunch: 0, dinner: 0, snack: 0 });
     const [updateTrigger, setUpdateTrigger] = useState(0);
     const menuRef = useRef(null);
     const [showWorkoutModal, setShowWorkoutModal] = useState(false);
+
     useEffect(() => {
         let isMounted = true;
-        const loadCalories = async () => {
+        const loadStats = async () => {
             const today = new Date().toISOString().split('T')[0];
-            const { data } = await supabase
+            const startTime = `${today}T00:00:00`;
+            const endTime = `${today}T23:59:59`;
+
+            // 1. Завантаження їжі
+            const { data: foodData } = await supabase
                 .from('food_entries')
                 .select('quantity_grams, meal_type, food_items(calories)')
                 .eq('user_id', session.user.id)
-                .gte('date_time', `${today}T00:00:00`)
-                .lte('date_time', `${today}T23:59:59`);
+                .gte('date_time', startTime)
+                .lte('date_time', endTime);
 
-            if (data && isMounted) {
-                let total = 0;
+            // 2. Завантаження тренувань
+            const { data: workoutData } = await supabase
+                .from('workout_entries')
+                .select('calories_burned_estimated')
+                .eq('user_id', session.user.id)
+                .gte('date_time', startTime)
+                .lte('date_time', endTime);
+
+            if (isMounted) {
+                // Обробка статистики їжі
+                let totalConsumed = 0;
                 const stats = { breakfast: 0, lunch: 0, dinner: 0, snack: 0 };
-
-                data.forEach(entry => {
+                foodData?.forEach(entry => {
                     const cals = Math.round(entry.food_items.calories * (entry.quantity_grams / 100));
-                    if (stats[entry.meal_type] !== undefined) {
-                        stats[entry.meal_type] += cals;
-                    }
-                    total += cals;
+                    if (stats[entry.meal_type] !== undefined) stats[entry.meal_type] += cals;
+                    totalConsumed += cals;
                 });
 
-                setConsumedCalories(total);
+                // Обробка статистики тренувань
+                const totalBurned = workoutData?.reduce((acc, curr) => acc + (curr.calories_burned_estimated || 0), 0) || 0;
+
+                setConsumedCalories(totalConsumed);
+                setBurnedCalories(totalBurned);
                 setMealStats(stats);
             }
         };
 
-        loadCalories();
+        loadStats();
         return () => { isMounted = false; };
     }, [session.user.id, updateTrigger]);
 
@@ -699,6 +715,12 @@ const Dashboard = ({ session, profile, onEditProfile }) => {
         setSelectedMeal(mealType);
         setShowFoodModal(true);
     };
+
+    // Розрахунок чистого залишку
+    const dailyGoal = profile?.daily_calories_goal || 2000;
+    const netCalories = consumedCalories - burnedCalories;
+    const remainingCalories = Math.max(0, dailyGoal - netCalories);
+    const progressPercent = Math.round((netCalories / dailyGoal) * 100);
 
     return (
         <div className="min-h-screen bg-slate-50 pb-24 font-sans animate-fade-in">
@@ -741,41 +763,57 @@ const Dashboard = ({ session, profile, onEditProfile }) => {
                     </div>
                 </div>
 
+                {/* ОНОВЛЕНИЙ ВІДЖЕТ СТАТИСТИКИ */}
                 <div className="bg-gradient-to-br from-emerald-500 to-emerald-600 text-white p-7 rounded-[2.5rem] shadow-xl shadow-emerald-200 relative overflow-hidden">
                     <div className="absolute -right-10 -top-10 w-48 h-48 bg-white opacity-10 rounded-full blur-3xl"></div>
-                    <div className="absolute -left-10 bottom-0 w-32 h-32 bg-emerald-300 opacity-20 rounded-full blur-2xl"></div>
-                    <div className="relative z-10 flex justify-between items-end mb-6">
-                        <div>
-                            <p className="text-emerald-100 text-sm font-medium mb-1 flex items-center gap-2"><Activity size={16} /> З'їдено сьогодні</p>
-                            <h2 className="text-5xl font-bold tracking-tight">{consumedCalories}</h2>
+
+                    {/* ТРИ КОЛОНКИ: З'їдено, Спорт, Залишок */}
+                    <div className="relative z-10 grid grid-cols-3 gap-2 mb-8 bg-black/10 p-4 rounded-3xl backdrop-blur-sm border border-white/10">
+                        <div className="text-center border-r border-white/10">
+                            <p className="text-[10px] uppercase font-black text-emerald-200 mb-1">З'їдено</p>
+                            <p className="text-xl font-bold">{consumedCalories}</p>
                         </div>
-                        <div className="text-right bg-white/10 p-3 rounded-2xl backdrop-blur-sm">
-                            <p className="text-emerald-50 text-xs mb-1">Ціль</p>
-                            <p className="font-bold text-lg">{profile?.daily_calories_goal || 2000}</p>
+                        <div className="text-center border-r border-white/10">
+                            <p className="text-[10px] uppercase font-black text-emerald-200 mb-1">Спорт</p>
+                            <p className="text-xl font-bold text-orange-300">-{burnedCalories}</p>
+                        </div>
+                        <div className="text-center">
+                            <p className="text-[10px] uppercase font-black text-emerald-200 mb-1">Залишок</p>
+                            <p className="text-xl font-bold">{remainingCalories}</p>
                         </div>
                     </div>
-                    <div className="relative">
-                        <div className="flex justify-between text-xs text-emerald-100 mb-2 font-medium">
-                            <span>Залишилось: {Math.max(0, (profile?.daily_calories_goal || 2000) - consumedCalories)}</span>
-                            <span>{Math.round((consumedCalories / (profile?.daily_calories_goal || 2000)) * 100)}%</span>
+
+                    <div className="relative z-10 flex justify-between items-end mb-4">
+                        <div>
+                            <p className="text-emerald-100 text-sm font-medium mb-1 flex items-center gap-2"><Activity size={16} /> Денний баланс</p>
+                            <h2 className="text-5xl font-bold tracking-tight">{netCalories}</h2>
                         </div>
-                        <div className="bg-emerald-800/30 h-3 rounded-full overflow-hidden backdrop-blur-sm">
-                            <div className="bg-white h-full rounded-full transition-all duration-500" style={{ width: `${Math.min(100, (consumedCalories / (profile?.daily_calories_goal || 2000)) * 100)}%` }}></div>
+                        <div className="text-right">
+                            <p className="text-emerald-50 text-xs mb-1 font-bold uppercase tracking-widest opacity-70">Ціль</p>
+                            <p className="font-bold text-lg">{dailyGoal}</p>
+                        </div>
+                    </div>
+
+                    <div className="relative">
+                        <div className="flex justify-between text-xs text-emerald-100 mb-2 font-bold uppercase tracking-wider">
+                            <span>Прогрес</span>
+                            <span>{progressPercent}%</span>
+                        </div>
+                        <div className="bg-emerald-800/30 h-4 rounded-full overflow-hidden backdrop-blur-sm p-1">
+                            <div
+                                className="bg-white h-full rounded-full transition-all duration-700 ease-out shadow-sm"
+                                style={{ width: `${Math.min(100, progressPercent)}%` }}
+                            ></div>
                         </div>
                     </div>
                 </div>
             </header>
 
             <main className="px-6 space-y-6 relative z-10">
-                {/* НАЧАЛО ВСТАВКИ */}
                 <button
-                    onClick={() => {
-                        console.log("Кнопка нажата!"); 
-                        setShowWorkoutModal(true);
-                    }}
-                    className="w-full bg-blue-600 text-white p-6 rounded-[2rem] shadow-lg shadow-blue-200 flex items-center justify-between group hover:bg-blue-700 transition-all"
+                    onClick={() => setShowWorkoutModal(true)}
+                    className="w-full bg-blue-600 text-white p-6 rounded-[2rem] shadow-lg shadow-blue-100 flex items-center justify-between group hover:bg-blue-700 transition-all active:scale-[0.98]"
                 >
-                    {/* КОНЕЦ ВСТАВКИ */}
                     <div className="flex items-center gap-4">
                         <div className="bg-white/20 p-3 rounded-2xl text-white">
                             <Dumbbell size={28} />
@@ -802,7 +840,7 @@ const Dashboard = ({ session, profile, onEditProfile }) => {
 
                 <div>
                     <h2 className="text-xl font-bold text-slate-800 mb-4">Параметри</h2>
-                    <div className="bg-white p-6 rounded-[2rem] shadow-sm border border-slate-100 flex items-center justify-between">
+                    <div className="bg-white p-6 rounded-[2rem] shadow-sm border border-slate-100 flex items-center justify-between transition-all hover:shadow-md">
                         <div className="flex items-center gap-4">
                             <div className="p-4 bg-purple-50 text-purple-500 rounded-2xl"><Scale size={24} /></div>
                             <div>
@@ -814,7 +852,6 @@ const Dashboard = ({ session, profile, onEditProfile }) => {
                 </div>
             </main>
 
-            {/* Модалки */}
             {showFoodModal && (
                 <FoodModal
                     session={session}
@@ -832,9 +869,9 @@ const Dashboard = ({ session, profile, onEditProfile }) => {
                     onWorkoutAdded={() => setUpdateTrigger(t => t + 1)}
                 />
             )}
-        </div> 
-    ); 
-}; 
+        </div>
+    );
+};
 
 function App() {
     const [session, setSession] = useState(null);
