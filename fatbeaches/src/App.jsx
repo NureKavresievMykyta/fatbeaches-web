@@ -6,6 +6,7 @@ import {
     Dumbbell, ShieldCheck, AlertCircle, ChevronLeft,
     Settings, History, ChevronDown, Search, X
 } from 'lucide-react';
+import AnalyticsView from './AnalyticsView';
 
 
 const MealCard = ({ title, icon, calories, color, bg, onClick }) => {
@@ -880,7 +881,6 @@ const Dashboard = ({ session, profile, onEditProfile }) => {
     );
 };
 
-// Допоміжний компонент для карток їжі
 const MealCard = ({ title, icon: Icon, calories, bg, onClick }) => (
     <button
         onClick={onClick}
@@ -896,24 +896,8 @@ const MealCard = ({ title, icon: Icon, calories, bg, onClick }) => (
     </button>
 );
 
+// 3. Експорт завжди робимо в самому кінці файлу
 export default Dashboard;
-
-// Допоміжний компонент для карток їжі
-const MealCard = ({ title, icon: Icon, calories, bg, onClick }) => (
-    <button
-        onClick={onClick}
-        className="bg-white p-5 rounded-[2rem] shadow-sm border border-slate-100 flex flex-col items-center text-center gap-3 transition-all hover:shadow-md active:scale-95"
-    >
-        <div className={`p-3 rounded-2xl text-white ${bg}`}>
-            <Icon size={24} />
-        </div>
-        <div>
-            <p className="text-xs font-bold text-slate-400 uppercase tracking-widest">{title}</p>
-            <p className="text-xl font-bold text-slate-800">{calories} <span className="text-[10px] text-slate-400">ккал</span></p>
-        </div>
-    </button>
-);
-
 function App() {
     const [session, setSession] = useState(null);
     const [role, setRole] = useState(null);
