@@ -756,10 +756,13 @@ const Dashboard = ({ session, profile, onEditProfile }) => {
 
                                     {/* ПІДВ'ЯЗАНА КНОПКА АНАЛІТИКИ */}
                                     <button
-                                        onClick={() => { setShowAnalytics(true); setMenuOpen(false); }}
+                                        onClick={() => {
+                                            setShowAnalytics(true); // Відкриваємо аналітику
+                                            setMenuOpen(false);      // Закриваємо меню
+                                        }}
                                         className="w-full flex items-center gap-3 p-3 rounded-xl hover:bg-slate-50 text-slate-600 text-sm font-medium transition-colors text-left"
                                     >
-                                        <History size={18} className="text-blue-500" /> Аналітика та прогрес
+                                        <History size={18} className="text-blue-500" /> Історія тренувань
                                     </button>
                                 </div>
                                 <div className="h-px bg-slate-50 my-1"></div>
@@ -879,6 +882,14 @@ const Dashboard = ({ session, profile, onEditProfile }) => {
             )}
         </div>
     );
+    {
+        showAnalytics && (
+            <AnalyticsView
+                session={session}
+                onClose={() => setShowAnalytics(false)}
+            />
+        )
+    }
 };
 
 const MealCard = ({ title, icon: Icon, calories, bg, onClick }) => (
