@@ -264,16 +264,16 @@ const WorkoutModal = ({ session, profile, onClose, onWorkoutAdded }) => {
     const [selectedType, setSelectedType] = useState('running');
     const [loading, setLoading] = useState(false);
 
-    // Коэффициенты интенсивности (MET)
+    
     const MET_VALUES = {
-        running: 8.0,   // Бег
-        walking: 3.5,   // Ходьба
-        cycling: 6.0,   // Велосипед
-        strength: 5.0,  // Силовая
-        yoga: 2.5       // Йога
+        running: 8.0,   
+        walking: 3.5,   
+        cycling: 6.0,  
+        strength: 5.0,  
+        yoga: 2.5       
     };
 
-    // АВТО-РАСЧЕТ КАЛОРИЙ: (MET * вес * 3.5) / 200 * минуты
+    
     const calculateBurned = () => {
         const weight = profile?.weight_kg || 70;
         const met = MET_VALUES[selectedType] || 3.0;
@@ -286,9 +286,9 @@ const WorkoutModal = ({ session, profile, onClose, onWorkoutAdded }) => {
 
         const { error } = await supabase.from('workout_entries').insert({
             user_id: session.user.id,
-            workout_item_id: selectedType, // Должно быть как в БД
+            workout_item_id: selectedType, 
             duration_minutes: parseInt(duration),
-            calories_burned_estimated: burned, // Должно быть как в БД
+            calories_burned_estimated: burned, 
             date_time: new Date().toISOString()
         });
 
@@ -734,7 +734,7 @@ const Dashboard = ({ session, profile, onEditProfile }) => {
                 {/* НАЧАЛО ВСТАВКИ */}
                 <button
                     onClick={() => {
-                        console.log("Кнопка нажата!"); // Теперь ты увидишь это в консоли (F12)
+                        console.log("Кнопка нажата!"); 
                         setShowWorkoutModal(true);
                     }}
                     className="w-full bg-blue-600 text-white p-6 rounded-[2rem] shadow-lg shadow-blue-200 flex items-center justify-between group hover:bg-blue-700 transition-all"
@@ -796,9 +796,9 @@ const Dashboard = ({ session, profile, onEditProfile }) => {
                     onWorkoutAdded={() => setUpdateTrigger(t => t + 1)}
                 />
             )}
-        </div> // Этот div закрывает основной контейнер Dashboard
-    ); // Эти скобки закрывают return
-}; // Эта скобка закрывает сам компонент Dashboard
+        </div> 
+    ); 
+}; 
 
 function App() {
     const [session, setSession] = useState(null);
