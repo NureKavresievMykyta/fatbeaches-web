@@ -903,7 +903,7 @@ const MealCard = ({ title, icon: Icon, calories, bg, onClick }) => (
 );
 
 // 3. Експорт завжди робимо в самому кінці файлу
-export default Dashboard;
+
 function App() {
     const [session, setSession] = useState(null);
     const [role, setRole] = useState(null);
