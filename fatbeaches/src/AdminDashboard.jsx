@@ -17,7 +17,9 @@ const AdminDashboard = ({ onLogout }) => {
             try {
                 let query;
                 if (activeTab === 'users') {
-                    query = supabase.from('user_profiles').select('*');
+                    // ВИПРАВЛЕННЯ: Використовуємо таблицю 'users', оскільки саме там ви зберігаєте ролі в App.jsx
+                    // Якщо у вас дані про імена в 'user_profiles', змініть назву таблиці тут назад.
+                    query = supabase.from('users').select('*');
                 } else if (activeTab === 'foods') {
                     query = supabase.from('food_items').select('*').order('name');
                 } else if (activeTab === 'workouts') {
@@ -41,13 +43,17 @@ const AdminDashboard = ({ onLogout }) => {
         if (!window.confirm('Ви впевнені, що хочете видалити цей запис?')) return;
 
         try {
+            // Визначаємо правильну таблицю для видалення
             const table = activeTab === 'foods' ? 'food_items' :
-                activeTab === 'workouts' ? 'workout_items' : 'user_profiles';
+                activeTab === 'workouts' ? 'workout_items' : 'users';
 
-            const { error } = await supabase.from(table).delete().eq('id', id);
+            // Зверніть увагу: видалення користувача з публічної таблиці не видаляє його з Auth (але це нормально для адмінки)
+            const { error } = await supabase.from(table).delete().eq(activeTab === 'users' ? 'user_id' : 'id', id);
+
             if (error) throw error;
 
-            setItems(items.filter(item => item.id !== id));
+            // Оновлюємо стан локально, фільтруючи по правильному ID
+            setItems(items.filter(item => (activeTab === 'users' ? item.user_id : item.id) !== id));
         } catch (error) {
             alert('Помилка видалення: ' + error.message);
         }
@@ -57,7 +63,7 @@ const AdminDashboard = ({ onLogout }) => {
         try {
             const table = activeTab === 'foods' ? 'food_items' : 'workout_items';
 
-            // Валідація для продуктів
+            // Валідація
             if (activeTab === 'foods') {
                 if (!newItem.name || !newItem.calories) {
                     alert('Будь ласка, заповніть назву та калорії');
@@ -77,10 +83,21 @@ const AdminDashboard = ({ onLogout }) => {
         }
     };
 
-    const filteredItems = items.filter(item =>
-        (item.name && item.name.toLowerCase().includes(searchTerm.toLowerCase())) ||
-        (item.email && item.email.toLowerCase().includes(searchTerm.toLowerCase()))
-    );
+    // Функція для безпечного відображення імені користувача
+    const getUserDisplayName = (user) => {
+        if (user.first_name && user.last_name) return `${user.first_name} ${user.last_name}`;
+        if (user.full_name) return user.full_name;
+        if (user.email) return user.email;
+        // Якщо імені немає, показуємо частину ID
+        return `User ${user.user_id?.substring(0, 8)}...`;
+    };
+
+    const filteredItems = items.filter(item => {
+        const term = searchTerm.toLowerCase();
+        const name = item.name || item.full_name || item.first_name || '';
+        const email = item.email || '';
+        return name.toLowerCase().includes(term) || email.toLowerCase().includes(term);
+    });
 
     return (
         <div className="min-h-screen bg-slate-50 flex flex-col">
@@ -135,31 +152,41 @@ const AdminDashboard = ({ onLogout }) => {
                                 <thead className="bg-slate-50 border-b border-slate-100">
                                     <tr>
                                         <th className="p-5 text-xs font-black text-slate-400 uppercase tracking-wider">ID</th>
-                                        <th className="p-5 text-xs font-black text-slate-400 uppercase tracking-wider">Назва / Email</th>
-                                        <th className="p-5 text-xs font-black text-slate-400 uppercase tracking-wider">Деталі (КБЖВ)</th>
+                                        <th className="p-5 text-xs font-black text-slate-400 uppercase tracking-wider">Назва / Інфо</th>
+                                        <th className="p-5 text-xs font-black text-slate-400 uppercase tracking-wider">Деталі</th>
                                         <th className="p-5 text-right text-xs font-black text-slate-400 uppercase tracking-wider">Дії</th>
                                     </tr>
                                 </thead>
                                 <tbody className="divide-y divide-slate-50">
                                     {filteredItems.map((item) => (
-                                        <tr key={item.id} className="hover:bg-slate-50 transition-colors group">
-                                            <td className="p-5 text-slate-400 font-mono text-xs">{item.id}</td>
-                                            <td className="p-5 font-bold text-slate-700">{item.name || item.email || 'Без назви'}</td>
+                                        <tr key={item.id || item.user_id} className="hover:bg-slate-50 transition-colors group">
+                                            <td className="p-5 text-slate-400 font-mono text-xs">
+                                                {(item.id || item.user_id)?.toString().slice(0, 8)}...
+                                            </td>
+
+                                            <td className="p-5 font-bold text-slate-700">
+                                                {activeTab === 'users' ? getUserDisplayName(item) : (item.name || 'Без назви')}
+                                            </td>
+
                                             <td className="p-5 text-sm text-slate-500">
                                                 {activeTab === 'foods' && (
-                                                    <div className="flex gap-3">
-                                                        <span className="text-orange-500 font-bold">{item.calories} ккал</span>
-                                                        <span className="text-blue-500">Б: {item.protein || 0}</span>
-                                                        <span className="text-yellow-500">Ж: {item.fat || 0}</span>
-                                                        <span className="text-emerald-500">В: {item.carbs || 0}</span>
+                                                    <div className="flex flex-wrap gap-2 text-xs">
+                                                        <span className="text-orange-600 font-bold bg-orange-50 px-2 py-1 rounded">{item.calories} ккал</span>
+                                                        <span className="text-blue-600 bg-blue-50 px-2 py-1 rounded">Б: {item.protein || 0}</span>
+                                                        <span className="text-yellow-600 bg-yellow-50 px-2 py-1 rounded">Ж: {item.fat || 0}</span>
+                                                        <span className="text-emerald-600 bg-emerald-50 px-2 py-1 rounded">В: {item.carbs || 0}</span>
                                                     </div>
                                                 )}
-                                                {activeTab === 'users' && `Роль: ${item.role}`}
+                                                {activeTab === 'users' && (
+                                                    <span className={`px-2 py-1 rounded text-xs font-bold ${item.role === 'admin' ? 'bg-purple-100 text-purple-600' : 'bg-slate-100 text-slate-600'}`}>
+                                                        {item.role || 'user'}
+                                                    </span>
+                                                )}
                                                 {activeTab === 'workouts' && 'Активність'}
                                             </td>
                                             <td className="p-5 text-right">
                                                 <button
-                                                    onClick={() => handleDelete(item.id)}
+                                                    onClick={() => handleDelete(item.id || item.user_id)}
                                                     className="p-2 text-slate-300 hover:text-red-500 hover:bg-red-50 rounded-lg transition-all"
                                                 >
                                                     <Trash2 size={18} />
@@ -173,6 +200,11 @@ const AdminDashboard = ({ onLogout }) => {
                     ) : (
                         <div className="flex flex-col items-center justify-center h-64 text-slate-400">
                             <p>Записів не знайдено</p>
+                            {activeTab === 'users' && (
+                                <p className="text-xs mt-2 text-slate-300">
+                                    (Перевірте RLS політики в Supabase, якщо таблиця не пуста)
+                                </p>
+                            )}
                         </div>
                     )}
                 </div>
@@ -198,7 +230,7 @@ const AdminDashboard = ({ onLogout }) => {
                                     className="w-full p-3 bg-slate-50 rounded-xl outline-none focus:ring-2 focus:ring-blue-500"
                                     value={newItem.name || ''}
                                     onChange={e => setNewItem({ ...newItem, name: e.target.value })}
-                                    placeholder="Наприклад: Вівсянка"
+                                    placeholder="Назва..."
                                 />
                             </div>
 
@@ -257,7 +289,6 @@ const AdminDashboard = ({ onLogout }) => {
     );
 };
 
-// Використовуємо React.createElement, щоб лінтер не сварився
 const TabButton = ({ active, onClick, icon, label }) => (
     <button
         onClick={onClick}
