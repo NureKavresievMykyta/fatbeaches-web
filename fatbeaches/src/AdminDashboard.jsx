@@ -1,386 +1,446 @@
 ﻿import React, { useState, useEffect } from 'react';
-import { Users, Utensils, Activity, Plus, Trash2, Save, X, Search, Eye } from 'lucide-react';
+import {
+    Users, Utensils, Activity, Plus, Trash2, Save, X, Search,
+    Eye, Edit2, CheckCircle, AlertCircle, ArrowUpDown,
+    LayoutDashboard, FileText, Check, XOctagon
+} from 'lucide-react';
 import { supabase } from './supabase';
 
 const AdminDashboard = ({ onLogout }) => {
-    const [activeTab, setActiveTab] = useState('foods');
+    // Основні стани
+    const [activeTab, setActiveTab] = useState('overview'); // 'overview', 'users', 'foods', 'workouts', 'applications'
     const [items, setItems] = useState([]);
     const [loading, setLoading] = useState(true);
     const [searchTerm, setSearchTerm] = useState('');
+    const [sortConfig, setSortConfig] = useState({ key: null, direction: 'asc' });
 
-    // Стан для модального вікна додавання
+    // Стан для статистики
+    const [stats, setStats] = useState({ users: 0, foods: 0, workouts: 0, pendingTrainers: 0 });
+
+    // Стан для модальних вікон
     const [isModalOpen, setIsModalOpen] = useState(false);
-    const [newItem, setNewItem] = useState({});
+    const [editingItem, setEditingItem] = useState(null);
+    const [formData, setFormData] = useState({});
 
-    // Стан для перегляду детальної інформації про користувача
     const [isUserModalOpen, setIsUserModalOpen] = useState(false);
     const [selectedUser, setSelectedUser] = useState(null);
     const [userProfile, setUserProfile] = useState(null);
     const [loadingProfile, setLoadingProfile] = useState(false);
 
+    const [userRole, setUserRole] = useState('');
+    const [userStatus, setUserStatus] = useState('');
+
     useEffect(() => {
-        const fetchData = async () => {
-            setLoading(true);
-            try {
-                let query;
-                if (activeTab === 'users') {
-                    query = supabase.from('users').select('*');
-                } else if (activeTab === 'foods') {
-                    query = supabase.from('food_items').select('*').order('name');
-                } else if (activeTab === 'workouts') {
-                    query = supabase.from('workout_items').select('*').order('name');
-                }
-
-                const { data, error } = await query;
-                if (error) throw error;
-                setItems(data || []);
-            } catch (error) {
-                console.error('Error fetching data:', error);
-            } finally {
-                setLoading(false);
-            }
-        };
-
         fetchData();
+        if (activeTab === 'overview') fetchStats();
     }, [activeTab]);
 
-    const handleDelete = async (id) => {
-        if (!window.confirm('Ви впевнені, що хочете видалити цей запис?')) return;
-
+    // --- ОТРИМАННЯ СТАТИСТИКИ ---
+    const fetchStats = async () => {
         try {
-            const table = activeTab === 'foods' ? 'food_items' :
-                activeTab === 'workouts' ? 'workout_items' : 'users';
+            const [users, foods, workouts, apps] = await Promise.all([
+                supabase.from('users').select('*', { count: 'exact', head: true }),
+                supabase.from('food_items').select('*', { count: 'exact', head: true }),
+                supabase.from('workout_items').select('*', { count: 'exact', head: true }),
+                supabase.from('trainer_applications').select('*', { count: 'exact', head: true }).eq('status', 'pending')
+            ]);
 
-            const idColumn = activeTab === 'users' ? 'user_id' : 'id';
-
-            const { error } = await supabase.from(table).delete().eq(idColumn, id);
-
-            if (error) throw error;
-            setItems(items.filter(item => item[idColumn] !== id));
+            setStats({
+                users: users.count || 0,
+                foods: foods.count || 0,
+                workouts: workouts.count || 0,
+                pendingTrainers: apps.count || 0
+            });
         } catch (error) {
-            alert('Помилка видалення: ' + error.message);
+            console.error("Error fetching stats:", error);
         }
     };
 
-    const handleAdd = async () => {
-        try {
-            const table = activeTab === 'foods' ? 'food_items' : 'workout_items';
+    // --- ОТРИМАННЯ ДАНИХ ТАБЛИЦЬ ---
+    const fetchData = async () => {
+        if (activeTab === 'overview') return; // Для огляду дані не потрібні тут
 
-            if (activeTab === 'foods') {
-                if (!newItem.name || !newItem.calories) {
-                    alert('Будь ласка, заповніть назву та калорії');
-                    return;
-                }
+        setLoading(true);
+        try {
+            let query;
+            if (activeTab === 'users') {
+                query = supabase.from('users').select('*');
+            } else if (activeTab === 'foods') {
+                query = supabase.from('food_items').select('*').order('name');
+            } else if (activeTab === 'workouts') {
+                query = supabase.from('workout_items').select('*').order('name');
+            } else if (activeTab === 'applications') {
+                // Отримуємо заявки разом з даними користувача (якщо зв'язок налаштований)
+                // Якщо зв'язку FK немає, просто беремо заявки
+                query = supabase.from('trainer_applications').select('*').order('created_at', { ascending: false });
             }
 
-            const { data, error } = await supabase.from(table).insert([newItem]).select();
+            const { data, error } = await query;
             if (error) throw error;
-
-            setItems([...items, data[0]]);
-            setIsModalOpen(false);
-            setNewItem({});
+            setItems(data || []);
         } catch (error) {
-            alert('Помилка додавання: ' + error.message);
+            console.error('Error fetching data:', error);
+        } finally {
+            setLoading(false);
         }
     };
 
-    // --- ФУНКЦІЯ: Перегляд деталей користувача ---
+    // --- ЛОГІКА ЗАЯВОК ТРЕНЕРІВ ---
+    const handleApplication = async (appId, userId, action) => {
+        if (!window.confirm(`Ви впевнені, що хочете ${action === 'approved' ? 'схвалити' : 'відхилити'} цю заявку?`)) return;
+
+        try {
+            // 1. Оновлюємо статус заявки
+            const { error: appError } = await supabase
+                .from('trainer_applications')
+                .update({ status: action })
+                .eq('id', appId);
+
+            if (appError) throw appError;
+
+            // 2. Якщо схвалено, оновлюємо роль користувача
+            if (action === 'approved') {
+                const { error: userError } = await supabase
+                    .from('users')
+                    .update({ role: 'trainer' })
+                    .eq('user_id', userId);
+
+                if (userError) throw userError;
+            }
+
+            alert(`Заявку успішно ${action === 'approved' ? 'схвалено' : 'відхилено'}!`);
+            fetchData(); // Оновити список
+            fetchStats(); // Оновити лічильники
+        } catch (error) {
+            alert('Помилка: ' + error.message);
+        }
+    };
+
+    // --- СОРТУВАННЯ ---
+    const handleSort = (key) => {
+        let direction = 'asc';
+        if (sortConfig.key === key && sortConfig.direction === 'asc') direction = 'desc';
+        setSortConfig({ key, direction });
+    };
+
+    const sortedItems = React.useMemo(() => {
+        if (activeTab === 'overview') return [];
+        let sortableItems = [...items];
+        if (sortConfig.key !== null) {
+            sortableItems.sort((a, b) => {
+                let aValue = a[sortConfig.key] || '';
+                let bValue = b[sortConfig.key] || '';
+                if (activeTab === 'users' && sortConfig.key === 'name') {
+                    aValue = getUserDisplayName(a);
+                    bValue = getUserDisplayName(b);
+                }
+                if (aValue < bValue) return sortConfig.direction === 'asc' ? -1 : 1;
+                if (aValue > bValue) return sortConfig.direction === 'asc' ? 1 : -1;
+                return 0;
+            });
+        }
+        return sortableItems;
+    }, [items, sortConfig, activeTab]);
+
+    // --- CRUD ОПЕРАЦІЇ ---
+    const handleDelete = async (id) => {
+        if (!window.confirm('Видалити цей запис?')) return;
+        try {
+            const table = activeTab === 'foods' ? 'food_items' :
+                activeTab === 'workouts' ? 'workout_items' :
+                    activeTab === 'applications' ? 'trainer_applications' : 'users';
+
+            const idColumn = activeTab === 'users' ? 'user_id' : 'id';
+            const { error } = await supabase.from(table).delete().eq(idColumn, id);
+            if (error) throw error;
+            setItems(items.filter(item => item[idColumn] !== id));
+        } catch (error) { alert(error.message); }
+    };
+
+    const handleSaveItem = async () => {
+        try {
+            const table = activeTab === 'foods' ? 'food_items' : 'workout_items';
+            if (activeTab === 'foods' && (!formData.name || !formData.calories)) { alert('Заповніть поля'); return; }
+            if (activeTab === 'workouts' && !formData.name) { alert('Заповніть назву'); return; }
+
+            let result;
+            if (editingItem) {
+                result = await supabase.from(table).update(formData).eq('id', editingItem.id).select();
+            } else {
+                result = await supabase.from(table).insert([formData]).select();
+            }
+
+            if (result.error) throw result.error;
+            if (editingItem) {
+                setItems(items.map(i => i.id === editingItem.id ? result.data[0] : i));
+            } else {
+                setItems([...items, result.data[0]]);
+            }
+            setIsModalOpen(false);
+            fetchStats(); // Оновити статистику
+        } catch (error) { alert(error.message); }
+    };
+
+    const openModal = (item = null) => {
+        setEditingItem(item);
+        setFormData(item || {});
+        setIsModalOpen(true);
+    };
+
+    // --- USER PROFILE ---
     const handleViewUser = async (user) => {
         setSelectedUser(user);
+        setUserRole(user.role || 'customer');
+        setUserStatus(user.status || 'active');
         setIsUserModalOpen(true);
         setLoadingProfile(true);
         setUserProfile(null);
-
         try {
-            // Робимо запит до user_profiles
-            const { data, error } = await supabase
-                .from('user_profiles')
-                .select('*')
-                .eq('user_id', user.user_id)
-                .single();
-
-            if (error && error.code !== 'PGRST116') {
-                throw error;
-            }
-
-            if (data) {
-                setUserProfile(data);
-            }
-        } catch (error) {
-            console.error("Помилка завантаження профілю:", error);
-        } finally {
-            setLoadingProfile(false);
-        }
+            const { data, error } = await supabase.from('user_profiles').select('*').eq('user_id', user.user_id).single();
+            if (error && error.code !== 'PGRST116') throw error;
+            if (data) setUserProfile(data);
+        } catch (error) { console.error(error); } finally { setLoadingProfile(false); }
     };
 
-    const getUserDisplayName = (user) => {
+    const handleUpdateUser = async () => {
+        if (!selectedUser) return;
+        try {
+            const { error } = await supabase.from('users').update({ role: userRole, status: userStatus }).eq('user_id', selectedUser.user_id);
+            if (error) throw error;
+            setItems(items.map(u => u.user_id === selectedUser.user_id ? { ...u, role: userRole, status: userStatus } : u));
+            alert('Оновлено!');
+            setIsUserModalOpen(false);
+        } catch (error) { alert(error.message); }
+    };
+
+    function getUserDisplayName(user) {
+        if (!user) return 'Користувач';
         if (user.name) return user.name;
         if (user.first_name && user.last_name) return `${user.first_name} ${user.last_name}`;
         if (user.full_name) return user.full_name;
         if (user.email) return user.email;
-        return `User ${user.user_id?.substring(0, 8)}...`;
+        return `ID: ${user.user_id?.substring(0, 6)}`;
     };
 
-    const filteredItems = items.filter(item => {
+    const filteredItems = sortedItems.filter(item => {
         const term = searchTerm.toLowerCase();
-        const name = item.name || item.full_name || item.first_name || '';
-        const email = item.email || '';
-        return name.toLowerCase().includes(term) || email.toLowerCase().includes(term);
+        const name = (item.name || getUserDisplayName(item) || '').toLowerCase();
+        const email = (item.email || '').toLowerCase();
+        return name.includes(term) || email.includes(term);
     });
 
     return (
-        <div className="min-h-screen bg-slate-50 flex flex-col">
-            <header className="bg-slate-900 text-white p-4 shadow-lg sticky top-0 z-10">
-                <div className="max-w-7xl mx-auto flex justify-between items-center">
-                    <div className="flex items-center gap-3">
-                        <div className="bg-blue-500 p-2 rounded-lg">
-                            <Activity size={24} className="text-white" />
-                        </div>
-                        <h1 className="text-xl font-bold tracking-tight">FatBeaches Admin</h1>
+        <div className="min-h-screen bg-slate-50 flex flex-col font-sans text-slate-900">
+            {/* --- HEADER --- */}
+            <header className="bg-white border-b border-slate-200 sticky top-0 z-20 px-6 py-4 flex justify-between items-center shadow-sm">
+                <div className="flex items-center gap-3">
+                    <div className="bg-slate-900 p-2 rounded-xl text-white">
+                        <Activity size={20} />
                     </div>
-                    <button onClick={onLogout} className="text-slate-400 hover:text-white transition-colors text-sm font-medium">
-                        Вийти
-                    </button>
+                    <div>
+                        <h1 className="text-xl font-bold leading-none">Admin Panel</h1>
+                        <p className="text-xs text-slate-500 font-medium mt-1">FatBeaches Manager</p>
+                    </div>
                 </div>
+                <button onClick={onLogout} className="px-4 py-2 bg-slate-100 hover:bg-slate-200 text-slate-600 rounded-lg text-sm font-bold transition-all">
+                    Вийти
+                </button>
             </header>
 
-            <main className="flex-1 max-w-7xl w-full mx-auto p-4 md:p-6 space-y-6">
-                <div className="flex gap-2 overflow-x-auto pb-2">
+            <main className="flex-1 max-w-[1400px] w-full mx-auto p-6 space-y-8">
+                {/* --- TABS --- */}
+                <div className="flex flex-wrap gap-2 p-1 bg-white rounded-2xl border border-slate-200 w-fit shadow-sm">
+                    <TabButton active={activeTab === 'overview'} onClick={() => setActiveTab('overview')} icon={LayoutDashboard} label="Головна" />
+                    <TabButton active={activeTab === 'users'} onClick={() => setActiveTab('users')} icon={Users} label="Користувачі" />
+                    <TabButton active={activeTab === 'applications'} onClick={() => setActiveTab('applications')} icon={FileText} label="Заявки" badge={stats.pendingTrainers} />
                     <TabButton active={activeTab === 'foods'} onClick={() => setActiveTab('foods')} icon={Utensils} label="Продукти" />
                     <TabButton active={activeTab === 'workouts'} onClick={() => setActiveTab('workouts')} icon={Activity} label="Вправи" />
-                    <TabButton active={activeTab === 'users'} onClick={() => setActiveTab('users')} icon={Users} label="Користувачі" />
                 </div>
 
-                <div className="flex flex-col sm:flex-row gap-4 justify-between items-center bg-white p-4 rounded-2xl shadow-sm border border-slate-100">
-                    <div className="relative w-full sm:w-96">
-                        <Search className="absolute left-3 top-1/2 -translate-y-1/2 text-slate-400" size={20} />
-                        <input
-                            type="text"
-                            placeholder="Пошук..."
-                            className="w-full pl-10 pr-4 py-2 bg-slate-50 border-none rounded-xl focus:ring-2 focus:ring-blue-500 transition-all outline-none text-slate-700"
-                            value={searchTerm}
-                            onChange={(e) => setSearchTerm(e.target.value)}
-                        />
+                {/* --- OVERVIEW TAB --- */}
+                {activeTab === 'overview' && (
+                    <div className="animate-fade-in">
+                        <h2 className="text-2xl font-bold text-slate-800 mb-6">Огляд системи</h2>
+                        <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-6">
+                            <StatCard title="Всього користувачів" value={stats.users} icon={Users} color="blue" />
+                            <StatCard title="Заявок на тренера" value={stats.pendingTrainers} icon={FileText} color="orange" />
+                            <StatCard title="Продуктів у базі" value={stats.foods} icon={Utensils} color="emerald" />
+                            <StatCard title="Типів тренувань" value={stats.workouts} icon={Activity} color="purple" />
+                        </div>
+
+                        <div className="mt-10 p-8 bg-white rounded-[2rem] border border-slate-200 text-center">
+                            <h3 className="text-lg font-bold text-slate-700 mb-2">Ласкаво просимо в адмінку FatBeaches!</h3>
+                            <p className="text-slate-500">Виберіть розділ у меню зверху, щоб почати керування базою даних.</p>
+                        </div>
                     </div>
-                    {activeTab !== 'users' && (
-                        <button
-                            onClick={() => setIsModalOpen(true)}
-                            className="w-full sm:w-auto flex items-center justify-center gap-2 bg-blue-600 hover:bg-blue-700 text-white px-6 py-2.5 rounded-xl font-bold transition-all shadow-md shadow-blue-200"
-                        >
-                            <Plus size={20} /> Додати запис
-                        </button>
-                    )}
-                </div>
+                )}
 
-                <div className="bg-white rounded-[2rem] shadow-sm border border-slate-100 overflow-hidden min-h-[400px]">
-                    {loading ? (
-                        <div className="flex justify-center items-center h-64 text-slate-400">Завантаження...</div>
-                    ) : filteredItems.length > 0 ? (
-                        <div className="overflow-x-auto">
-                            <table className="w-full text-left border-collapse">
-                                <thead className="bg-slate-50 border-b border-slate-100">
-                                    <tr>
-                                        <th className="p-5 text-xs font-black text-slate-400 uppercase tracking-wider">ID</th>
-                                        <th className="p-5 text-xs font-black text-slate-400 uppercase tracking-wider">Назва / Email</th>
-                                        <th className="p-5 text-xs font-black text-slate-400 uppercase tracking-wider">Деталі</th>
-                                        <th className="p-5 text-right text-xs font-black text-slate-400 uppercase tracking-wider">Дії</th>
-                                    </tr>
-                                </thead>
-                                <tbody className="divide-y divide-slate-50">
-                                    {filteredItems.map((item) => (
-                                        <tr key={item.id || item.user_id} className="hover:bg-slate-50 transition-colors group">
-                                            <td className="p-5 text-slate-400 font-mono text-xs">
-                                                {(item.id || item.user_id)?.toString().slice(0, 8)}...
-                                            </td>
-
-                                            <td className="p-5 font-bold text-slate-700">
-                                                {activeTab === 'users' ? getUserDisplayName(item) : (item.name || 'Без назви')}
-                                                {activeTab === 'users' && item.email && (
-                                                    <div className="text-xs text-slate-400 font-normal mt-1">{item.email}</div>
-                                                )}
-                                            </td>
-
-                                            <td className="p-5 text-sm text-slate-500">
-                                                {activeTab === 'foods' && (
-                                                    <div className="flex flex-wrap gap-2 text-xs">
-                                                        <span className="text-orange-600 font-bold bg-orange-50 px-2 py-1 rounded">{item.calories} ккал</span>
-                                                        <span className="text-blue-600 bg-blue-50 px-2 py-1 rounded">Б: {item.protein || 0}</span>
-                                                    </div>
-                                                )}
-                                                {activeTab === 'users' && (
-                                                    <div className="flex items-center gap-2">
-                                                        <span className={`px-2 py-1 rounded text-xs font-bold uppercase ${item.role === 'admin' ? 'bg-purple-100 text-purple-600' : 'bg-slate-100 text-slate-600'}`}>
-                                                            {item.role || 'user'}
-                                                        </span>
-                                                    </div>
-                                                )}
-                                                {activeTab === 'workouts' && 'Активність'}
-                                            </td>
-                                            <td className="p-5 text-right flex justify-end gap-2">
-                                                {activeTab === 'users' && (
-                                                    <button
-                                                        onClick={() => handleViewUser(item)}
-                                                        className="p-2 text-slate-300 hover:text-blue-500 hover:bg-blue-50 rounded-lg transition-all"
-                                                        title="Повна інформація"
-                                                    >
-                                                        <Eye size={18} />
-                                                    </button>
-                                                )}
-
-                                                <button
-                                                    onClick={() => handleDelete(item.id || item.user_id)}
-                                                    className="p-2 text-slate-300 hover:text-red-500 hover:bg-red-50 rounded-lg transition-all"
-                                                    title="Видалити"
-                                                >
-                                                    <Trash2 size={18} />
-                                                </button>
-                                            </td>
-                                        </tr>
-                                    ))}
-                                </tbody>
-                            </table>
-                        </div>
-                    ) : (
-                        <div className="flex flex-col items-center justify-center h-64 text-slate-400">
-                            <p>Записів не знайдено</p>
-                        </div>
-                    )}
-                </div>
-            </main>
-
-            {/* Модальне вікно додавання */}
-            {isModalOpen && (
-                <div className="fixed inset-0 bg-black/50 backdrop-blur-sm z-50 flex items-center justify-center p-4">
-                    <div className="bg-white w-full max-w-md rounded-3xl p-6 shadow-2xl animate-fade-in">
-                        <div className="flex justify-between items-center mb-6">
-                            <h3 className="text-xl font-bold text-slate-800">Додати запис</h3>
-                            <button onClick={() => setIsModalOpen(false)} className="p-2 hover:bg-slate-100 rounded-full text-slate-500">
-                                <X size={20} />
-                            </button>
-                        </div>
-
-                        <div className="space-y-4">
-                            <div>
-                                <label className="block text-sm font-bold text-slate-700 mb-1">Назва</label>
+                {/* --- OTHER TABS (TABLES) --- */}
+                {activeTab !== 'overview' && (
+                    <div className="animate-fade-in space-y-6">
+                        <div className="flex flex-col md:flex-row gap-4 justify-between items-center">
+                            <div className="relative w-full md:w-96">
+                                <Search className="absolute left-3 top-1/2 -translate-y-1/2 text-slate-400" size={18} />
                                 <input
                                     type="text"
-                                    className="w-full p-3 bg-slate-50 rounded-xl outline-none focus:ring-2 focus:ring-blue-500"
-                                    value={newItem.name || ''}
-                                    onChange={e => setNewItem({ ...newItem, name: e.target.value })}
+                                    placeholder="Пошук..."
+                                    className="w-full pl-10 pr-4 py-3 bg-white border border-slate-200 rounded-xl focus:ring-2 focus:ring-blue-500 outline-none transition-all shadow-sm"
+                                    value={searchTerm}
+                                    onChange={(e) => setSearchTerm(e.target.value)}
                                 />
                             </div>
+                            {activeTab !== 'users' && activeTab !== 'applications' && (
+                                <button onClick={() => openModal(null)} className="w-full md:w-auto flex items-center justify-center gap-2 bg-blue-600 hover:bg-blue-700 text-white px-6 py-3 rounded-xl font-bold transition-all shadow-lg shadow-blue-200">
+                                    <Plus size={20} /> Додати запис
+                                </button>
+                            )}
+                        </div>
 
-                            {activeTab === 'foods' && (
-                                <div className="grid grid-cols-2 gap-4">
-                                    <div>
-                                        <label className="block text-sm font-bold text-slate-700 mb-1">Калорії</label>
-                                        <input
-                                            type="number"
-                                            className="w-full p-3 bg-slate-50 rounded-xl outline-none focus:ring-2 focus:ring-blue-500"
-                                            value={newItem.calories || ''}
-                                            onChange={e => setNewItem({ ...newItem, calories: e.target.value })}
-                                        />
-                                    </div>
-                                    <div>
-                                        <label className="block text-sm font-bold text-slate-700 mb-1">Білки</label>
-                                        <input
-                                            type="number"
-                                            className="w-full p-3 bg-slate-50 rounded-xl outline-none focus:ring-2 focus:ring-blue-500"
-                                            value={newItem.protein || ''}
-                                            onChange={e => setNewItem({ ...newItem, protein: e.target.value })}
-                                        />
-                                    </div>
-                                    <div>
-                                        <label className="block text-sm font-bold text-slate-700 mb-1">Жири</label>
-                                        <input
-                                            type="number"
-                                            className="w-full p-3 bg-slate-50 rounded-xl outline-none focus:ring-2 focus:ring-blue-500"
-                                            value={newItem.fat || ''}
-                                            onChange={e => setNewItem({ ...newItem, fat: e.target.value })}
-                                        />
-                                    </div>
-                                    <div>
-                                        <label className="block text-sm font-bold text-slate-700 mb-1">Вуглеводи</label>
-                                        <input
-                                            type="number"
-                                            className="w-full p-3 bg-slate-50 rounded-xl outline-none focus:ring-2 focus:ring-blue-500"
-                                            value={newItem.carbs || ''}
-                                            onChange={e => setNewItem({ ...newItem, carbs: e.target.value })}
-                                        />
-                                    </div>
+                        <div className="bg-white rounded-[1.5rem] shadow-sm border border-slate-200 overflow-hidden">
+                            {loading ? (
+                                <div className="flex justify-center items-center h-64 text-slate-400">Завантаження...</div>
+                            ) : filteredItems.length > 0 ? (
+                                <div className="overflow-x-auto">
+                                    <table className="w-full text-left border-collapse">
+                                        <thead className="bg-slate-50/50 border-b border-slate-200">
+                                            <tr>
+                                                <th onClick={() => handleSort('name')} className="p-5 text-xs font-black text-slate-400 uppercase cursor-pointer hover:text-blue-600 group">
+                                                    <div className="flex items-center gap-1">
+                                                        {activeTab === 'applications' ? 'Користувач / Статус' : 'Назва / Email'}
+                                                        <ArrowUpDown size={12} className="opacity-0 group-hover:opacity-100" />
+                                                    </div>
+                                                </th>
+                                                <th className="p-5 text-xs font-black text-slate-400 uppercase">Деталі</th>
+                                                <th className="p-5 text-right text-xs font-black text-slate-400 uppercase">Дії</th>
+                                            </tr>
+                                        </thead>
+                                        <tbody className="divide-y divide-slate-100">
+                                            {filteredItems.map((item) => (
+                                                <tr key={item.id || item.user_id} className="hover:bg-slate-50/80 transition-colors group">
+                                                    <td className="p-5">
+                                                        {activeTab === 'applications' ? (
+                                                            <div>
+                                                                <div className="font-bold text-slate-700">User ID: {item.user_id?.substring(0, 8)}...</div>
+                                                                <div className="text-xs text-slate-400 mt-1">{new Date(item.created_at).toLocaleDateString()}</div>
+                                                            </div>
+                                                        ) : (
+                                                            <div>
+                                                                <div className="font-bold text-slate-700 text-base">
+                                                                    {activeTab === 'users' ? getUserDisplayName(item) : (item.name || 'Без назви')}
+                                                                </div>
+                                                                {activeTab === 'users' && <div className="text-xs text-slate-400 mt-0.5">{item.email}</div>}
+                                                            </div>
+                                                        )}
+                                                    </td>
+
+                                                    <td className="p-5">
+                                                        {activeTab === 'applications' && (
+                                                            <span className={`px-2.5 py-1 rounded-lg text-xs font-bold uppercase border ${item.status === 'pending' ? 'bg-orange-50 text-orange-600 border-orange-100' :
+                                                                    item.status === 'approved' ? 'bg-emerald-50 text-emerald-600 border-emerald-100' :
+                                                                        'bg-red-50 text-red-600 border-red-100'
+                                                                }`}>
+                                                                {item.status}
+                                                            </span>
+                                                        )}
+                                                        {activeTab === 'foods' && (
+                                                            <div className="flex flex-wrap gap-2 text-xs font-bold">
+                                                                <span className="bg-orange-50 text-orange-600 px-2 py-1 rounded-md">{item.calories} ккал</span>
+                                                            </div>
+                                                        )}
+                                                        {activeTab === 'users' && (
+                                                            <div className="flex items-center gap-2">
+                                                                <span className={`px-2 py-1 rounded text-xs font-bold uppercase ${item.role === 'admin' ? 'bg-purple-100 text-purple-600' : 'bg-slate-100 text-slate-600'}`}>{item.role || 'customer'}</span>
+                                                                <span className={`px-2 py-1 rounded text-xs font-bold uppercase ${item.status === 'banned' ? 'bg-red-100 text-red-600' : 'bg-emerald-50 text-emerald-600'}`}>{item.status || 'Active'}</span>
+                                                            </div>
+                                                        )}
+                                                    </td>
+
+                                                    <td className="p-5 text-right">
+                                                        <div className="flex justify-end gap-2">
+                                                            {activeTab === 'applications' && item.status === 'pending' && (
+                                                                <>
+                                                                    <button onClick={() => handleApplication(item.id, item.user_id, 'approved')} className="p-2 bg-emerald-50 text-emerald-600 rounded-lg hover:bg-emerald-100" title="Схвалити"><Check size={16} /></button>
+                                                                    <button onClick={() => handleApplication(item.id, item.user_id, 'rejected')} className="p-2 bg-red-50 text-red-600 rounded-lg hover:bg-red-100" title="Відхилити"><XOctagon size={16} /></button>
+                                                                </>
+                                                            )}
+                                                            {activeTab === 'users' && (
+                                                                <button onClick={() => handleViewUser(item)} className="p-2 bg-white border hover:bg-slate-50 rounded-lg text-slate-500"><Eye size={16} /></button>
+                                                            )}
+                                                            {(activeTab === 'foods' || activeTab === 'workouts') && (
+                                                                <button onClick={() => openModal(item)} className="p-2 bg-white border hover:bg-slate-50 rounded-lg text-slate-500"><Edit2 size={16} /></button>
+                                                            )}
+                                                            <button onClick={() => handleDelete(item.id || item.user_id)} className="p-2 bg-white border hover:text-red-600 rounded-lg text-slate-400"><Trash2 size={16} /></button>
+                                                        </div>
+                                                    </td>
+                                                </tr>
+                                            ))}
+                                        </tbody>
+                                    </table>
+                                </div>
+                            ) : (
+                                <div className="flex flex-col items-center justify-center h-64 text-slate-400">
+                                    <p>Записів не знайдено</p>
                                 </div>
                             )}
+                        </div>
+                    </div>
+                )}
+            </main>
 
-                            <button onClick={handleAdd} className="w-full bg-blue-600 hover:bg-blue-700 text-white font-bold py-3 rounded-xl mt-4 flex items-center justify-center gap-2">
-                                <Save size={20} /> Зберегти
-                            </button>
+            {/* --- MODAL ADD/EDIT --- */}
+            {isModalOpen && (
+                <div className="fixed inset-0 bg-slate-900/40 backdrop-blur-sm z-50 flex items-center justify-center p-4">
+                    <div className="bg-white w-full max-w-lg rounded-[2rem] p-8 shadow-2xl">
+                        <div className="flex justify-between items-center mb-6">
+                            <h3 className="text-xl font-bold">{editingItem ? 'Редагувати' : 'Додати'}</h3>
+                            <button onClick={() => setIsModalOpen(false)}><X size={24} className="text-slate-400" /></button>
+                        </div>
+                        <div className="space-y-4">
+                            <div>
+                                <label className="text-sm font-bold text-slate-700">Назва</label>
+                                <input type="text" className="w-full p-3 bg-slate-50 rounded-xl border-transparent focus:border-blue-500 border-2 outline-none" value={formData.name || ''} onChange={e => setFormData({ ...formData, name: e.target.value })} />
+                            </div>
+                            {activeTab === 'foods' && (
+                                <div className="grid grid-cols-2 gap-4">
+                                    <div><label className="text-xs font-bold text-slate-500">Калорії</label><input type="number" className="w-full p-3 bg-slate-50 rounded-xl outline-none" value={formData.calories || ''} onChange={e => setFormData({ ...formData, calories: e.target.value })} /></div>
+                                    <div><label className="text-xs font-bold text-slate-500">Білки</label><input type="number" className="w-full p-3 bg-slate-50 rounded-xl outline-none" value={formData.protein || ''} onChange={e => setFormData({ ...formData, protein: e.target.value })} /></div>
+                                    <div><label className="text-xs font-bold text-slate-500">Жири</label><input type="number" className="w-full p-3 bg-slate-50 rounded-xl outline-none" value={formData.fat || ''} onChange={e => setFormData({ ...formData, fat: e.target.value })} /></div>
+                                    <div><label className="text-xs font-bold text-slate-500">Вуглеводи</label><input type="number" className="w-full p-3 bg-slate-50 rounded-xl outline-none" value={formData.carbs || ''} onChange={e => setFormData({ ...formData, carbs: e.target.value })} /></div>
+                                </div>
+                            )}
+                            <button onClick={handleSaveItem} className="w-full bg-blue-600 text-white font-bold py-3 rounded-xl mt-4 flex justify-center gap-2"><Save size={20} /> Зберегти</button>
                         </div>
                     </div>
                 </div>
             )}
 
-            {/* --- МОДАЛЬНЕ ВІКНО: ІНФОРМАЦІЯ ПРО КОРИСТУВАЧА --- */}
+            {/* --- MODAL USER EDIT --- */}
             {isUserModalOpen && selectedUser && (
-                <div className="fixed inset-0 bg-black/60 backdrop-blur-sm z-[60] flex items-center justify-center p-4">
-                    <div className="bg-white w-full max-w-lg rounded-[2.5rem] p-8 shadow-2xl animate-fade-in relative overflow-hidden">
-                        <div className="absolute top-0 left-0 w-full h-32 bg-gradient-to-r from-blue-500 to-emerald-500 opacity-10" />
-
-                        <div className="relative">
-                            <div className="flex justify-between items-start mb-6">
-                                <div>
-                                    <h3 className="text-2xl font-black text-slate-800">
-                                        {getUserDisplayName(selectedUser)}
-                                    </h3>
-                                    <p className="text-slate-500 font-medium">{selectedUser.email}</p>
-                                    <div className="mt-2 inline-block px-3 py-1 bg-slate-100 text-slate-600 rounded-lg text-xs font-bold uppercase tracking-wider">
-                                        {selectedUser.role || 'User'}
-                                    </div>
+                <div className="fixed inset-0 bg-slate-900/60 backdrop-blur-md z-[60] flex items-center justify-center p-4">
+                    <div className="bg-white w-full max-w-2xl rounded-[2.5rem] p-8 shadow-2xl relative flex flex-col md:flex-row gap-8">
+                        <button onClick={() => setIsUserModalOpen(false)} className="absolute top-4 right-4 p-2 bg-slate-100 rounded-full"><X size={20} /></button>
+                        <div className="flex-1">
+                            <h3 className="text-xl font-black mb-1">{getUserDisplayName(selectedUser)}</h3>
+                            <p className="text-sm text-slate-500 mb-4">{selectedUser.email}</p>
+                            {loadingProfile ? <p>Завантаження...</p> : userProfile ? (
+                                <div className="space-y-2">
+                                    <div className="flex gap-2"><span className="font-bold">Вага:</span> {userProfile.weight_kg} кг</div>
+                                    <div className="flex gap-2"><span className="font-bold">Зріст:</span> {userProfile.height_cm} см</div>
+                                    <div className="flex gap-2"><span className="font-bold">Ціль:</span> {userProfile.goal}</div>
                                 </div>
-                                <button onClick={() => setIsUserModalOpen(false)} className="p-2 bg-slate-100 hover:bg-slate-200 rounded-full text-slate-600 transition-colors">
-                                    <X size={24} />
-                                </button>
+                            ) : <p className="text-slate-400 border p-2 rounded text-center text-sm">Профіль не заповнено</p>}
+                        </div>
+                        <div className="flex-1 border-l pl-8 space-y-4">
+                            <h4 className="font-bold flex items-center gap-2"><Edit2 size={16} /> Редагувати доступ</h4>
+                            <div>
+                                <label className="block text-xs font-bold text-slate-500 mb-1">Роль</label>
+                                <div className="flex gap-2">{['customer', 'trainer', 'admin'].map(r => <button key={r} onClick={() => setUserRole(r)} className={`px-3 py-1 rounded capitalize border ${userRole === r ? 'bg-blue-50 border-blue-500 text-blue-700' : 'bg-white'}`}>{r}</button>)}</div>
                             </div>
-
-                            {loadingProfile ? (
-                                <div className="py-10 text-center text-slate-400">Завантаження даних...</div>
-                            ) : userProfile ? (
-                                <div className="grid grid-cols-2 gap-4">
-                                    <div className="bg-slate-50 p-4 rounded-2xl border border-slate-100">
-                                        <p className="text-xs font-bold text-slate-400 uppercase">Вік</p>
-                                        <p className="text-2xl font-black text-slate-800">{userProfile.age || '-'}</p>
-                                    </div>
-                                    <div className="bg-slate-50 p-4 rounded-2xl border border-slate-100">
-                                        <p className="text-xs font-bold text-slate-400 uppercase">Стать</p>
-                                        <p className="text-2xl font-black text-slate-800 capitalize">
-                                            {userProfile.gender === 'male' ? 'Чол' : userProfile.gender === 'female' ? 'Жін' : '-'}
-                                        </p>
-                                    </div>
-                                    <div className="bg-slate-50 p-4 rounded-2xl border border-slate-100">
-                                        <p className="text-xs font-bold text-slate-400 uppercase">Зріст</p>
-                                        {/* ВИПРАВЛЕНО: height -> height_cm */}
-                                        <p className="text-2xl font-black text-slate-800">{userProfile.height_cm || '-'} <span className="text-sm text-slate-400 font-medium">см</span></p>
-                                    </div>
-                                    <div className="bg-slate-50 p-4 rounded-2xl border border-slate-100">
-                                        <p className="text-xs font-bold text-slate-400 uppercase">Вага</p>
-                                        {/* ВИПРАВЛЕНО: weight -> weight_kg */}
-                                        <p className="text-2xl font-black text-slate-800">{userProfile.weight_kg || '-'} <span className="text-sm text-slate-400 font-medium">кг</span></p>
-                                    </div>
-
-                                    <div className="col-span-2 bg-slate-50 p-4 rounded-2xl border border-slate-100">
-                                        <p className="text-xs font-bold text-slate-400 uppercase mb-1">Ціль</p>
-                                        <p className="text-lg font-bold text-slate-800 capitalize">
-                                            {userProfile.goal === 'lose_weight' ? 'Схуднення' :
-                                                userProfile.goal === 'gain_muscle' ? 'Набір маси' :
-                                                    userProfile.goal === 'maintenance' ? 'Підтримка форми' :
-                                                        userProfile.goal || 'Не вказано'}
-                                        </p>
-                                    </div>
-                                </div>
-                            ) : (
-                                <div className="py-8 text-center bg-slate-50 rounded-3xl border border-dashed border-slate-200">
-                                    <p className="text-slate-400 font-medium">Користувач ще не заповнив профіль</p>
-                                </div>
-                            )}
+                            <div>
+                                <label className="block text-xs font-bold text-slate-500 mb-1">Статус</label>
+                                <div className="flex gap-2">{['active', 'banned'].map(s => <button key={s} onClick={() => setUserStatus(s)} className={`px-3 py-1 rounded capitalize border ${userStatus === s ? (s === 'active' ? 'bg-emerald-50 border-emerald-500 text-emerald-700' : 'bg-red-50 border-red-500 text-red-700') : 'bg-white'}`}>{s}</button>)}</div>
+                            </div>
+                            <button onClick={handleUpdateUser} className="w-full bg-slate-900 text-white font-bold py-3 rounded-xl flex justify-center gap-2"><Save size={18} /> Зберегти</button>
                         </div>
                     </div>
                 </div>
@@ -389,17 +449,31 @@ const AdminDashboard = ({ onLogout }) => {
     );
 };
 
-// React.createElement для обходу помилки лінтера
-const TabButton = ({ active, onClick, icon, label }) => (
-    <button
-        onClick={onClick}
-        className={`flex items-center gap-2 px-6 py-3 rounded-xl font-bold transition-all whitespace-nowrap
-        ${active
-                ? 'bg-slate-800 text-white shadow-lg shadow-slate-200'
-                : 'bg-white text-slate-500 hover:bg-slate-100'}`}
-    >
-        {React.createElement(icon, { size: 18 })}
+const StatCard = ({ title, value, icon, color }) => {
+    const colors = {
+        blue: 'bg-blue-50 text-blue-600',
+        orange: 'bg-orange-50 text-orange-600',
+        emerald: 'bg-emerald-50 text-emerald-600',
+        purple: 'bg-purple-50 text-purple-600'
+    };
+    return (
+        <div className="bg-white p-6 rounded-[2rem] border border-slate-100 shadow-sm flex items-center gap-4">
+            <div className={`p-4 rounded-2xl ${colors[color]}`}>
+                {React.createElement(icon, { size: 24 })}
+            </div>
+            <div>
+                <p className="text-slate-400 text-xs font-bold uppercase tracking-wider">{title}</p>
+                <p className="text-3xl font-black text-slate-800">{value}</p>
+            </div>
+        </div>
+    );
+};
+
+const TabButton = ({ active, onClick, icon, label, badge }) => (
+    <button onClick={onClick} className={`flex items-center gap-2 px-5 py-2.5 rounded-xl font-bold transition-all text-sm ${active ? 'bg-slate-900 text-white shadow-md' : 'bg-transparent text-slate-500 hover:bg-slate-50'}`}>
+        {React.createElement(icon, { size: 16 })}
         {label}
+        {badge > 0 && <span className="ml-1 bg-red-500 text-white text-[10px] px-1.5 py-0.5 rounded-full">{badge}</span>}
     </button>
 );
 
