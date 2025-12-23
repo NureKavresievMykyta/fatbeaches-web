@@ -10,7 +10,7 @@ const AdminDashboard = ({ onLogout }) => {
     // --- ОСНОВНІ СТАНИ ---
     const [activeTab, setActiveTab] = useState('overview');
     const [items, setItems] = useState([]);
-    const [usersLookup, setUsersLookup] = useState({}); // Кеш користувачів для швидкого пошуку імен
+    const [usersLookup, setUsersLookup] = useState({});
     const [loading, setLoading] = useState(true);
     const [searchTerm, setSearchTerm] = useState('');
     const [sortConfig, setSortConfig] = useState({ key: null, direction: 'asc' });
@@ -19,7 +19,7 @@ const AdminDashboard = ({ onLogout }) => {
     const [stats, setStats] = useState({ users: 0, foods: 0, workouts: 0, pendingTrainers: 0 });
 
     // Фільтр для заявок
-    const [appFilter, setAppFilter] = useState('pending'); // 'all', 'pending', 'approved', 'rejected'
+    const [appFilter, setAppFilter] = useState('pending');
 
     // Модальні вікна
     const [isModalOpen, setIsModalOpen] = useState(false);
@@ -31,14 +31,13 @@ const AdminDashboard = ({ onLogout }) => {
     const [userProfile, setUserProfile] = useState(null);
     const [loadingProfile, setLoadingProfile] = useState(false);
 
-    // Тимчасові стани редагування юзера
     const [userRole, setUserRole] = useState('');
     const [userStatus, setUserStatus] = useState('');
 
     useEffect(() => {
         fetchData();
         if (activeTab === 'overview') fetchStats();
-    }, [activeTab, appFilter]); // Перезавантажувати при зміні фільтру заявок
+    }, [activeTab, appFilter]);
 
     // --- ОТРИМАННЯ СТАТИСТИКИ ---
     const fetchStats = async () => {
@@ -85,26 +84,18 @@ const AdminDashboard = ({ onLogout }) => {
                 data = workouts;
             }
             else if (activeTab === 'applications') {
-                // 1. Отримуємо заявки
                 let query = supabase.from('trainer_applications').select('*').order('created_at', { ascending: false });
-
-                if (appFilter !== 'all') {
-                    query = query.eq('status', appFilter);
-                }
+                if (appFilter !== 'all') query = query.eq('status', appFilter);
 
                 const { data: apps, error: appError } = await query;
                 if (appError) throw appError;
 
-                // 2. Отримуємо список всіх користувачів, щоб підставити імена замість ID
-                // (Це простіше, ніж налаштовувати складні Join-и, якщо FK не ідеальні)
                 const { data: users, error: userError } = await supabase.from('users').select('user_id, email, name, first_name, last_name');
-
                 if (!userError && users) {
                     const lookup = {};
                     users.forEach(u => lookup[u.user_id] = u);
-                    setUsersLookup(lookup); // Зберігаємо для рендеру
+                    setUsersLookup(lookup);
                 }
-
                 data = apps;
             }
 
@@ -116,41 +107,27 @@ const AdminDashboard = ({ onLogout }) => {
         }
     };
 
-    // --- ЛОГІКА ЗАЯВОК (APPROVE / REJECT) ---
+    // --- ЛОГІКА ЗАЯВОК ---
     const handleApplication = async (appId, userId, action) => {
         const actionText = action === 'approved' ? 'схвалити' : 'відхилити';
         if (!window.confirm(`Ви впевнені, що хочете ${actionText} цю заявку?`)) return;
 
         try {
-            // 1. Оновлюємо статус заявки
-            const { error: appError } = await supabase
-                .from('trainer_applications')
-                .update({ status: action })
-                .eq('id', appId);
-
+            const { error: appError } = await supabase.from('trainer_applications').update({ status: action }).eq('id', appId);
             if (appError) throw appError;
 
-            // 2. Якщо СХВАЛЕНО -> змінюємо роль користувача на 'trainer'
             if (action === 'approved') {
-                const { error: userError } = await supabase
-                    .from('users')
-                    .update({ role: 'trainer' })
-                    .eq('user_id', userId);
-
-                if (userError) {
-                    alert('Заявку оновлено, але не вдалося змінити роль користувача: ' + userError.message);
-                }
+                const { error: userError } = await supabase.from('users').update({ role: 'trainer' }).eq('user_id', userId);
+                if (userError) alert('Помилка оновлення ролі: ' + userError.message);
             }
 
-            alert(`Успішно! Заявка ${action === 'approved' ? 'схвалена' : 'відхилена'}.`);
-
-            // Оновлюємо список (видаляємо оброблену заявку з візуального списку, якщо фільтр 'pending')
+            alert(`Заявка ${action === 'approved' ? 'схвалена' : 'відхилена'}.`);
             if (appFilter === 'pending') {
                 setItems(items.filter(item => item.id !== appId));
             } else {
-                fetchData(); // Перезавантажити все, якщо дивимось загальний список
+                fetchData();
             }
-            fetchStats(); // Оновити бейджі
+            fetchStats();
         } catch (error) {
             alert('Помилка: ' + error.message);
         }
@@ -171,14 +148,9 @@ const AdminDashboard = ({ onLogout }) => {
                 let aValue = a[sortConfig.key] || '';
                 let bValue = b[sortConfig.key] || '';
 
-                // Спеціальна логіка для імен користувачів
                 if ((activeTab === 'users' || activeTab === 'applications') && sortConfig.key === 'name') {
-                    aValue = activeTab === 'users'
-                        ? getUserDisplayName(a)
-                        : getUserDisplayName(usersLookup[a.user_id]);
-                    bValue = activeTab === 'users'
-                        ? getUserDisplayName(b)
-                        : getUserDisplayName(usersLookup[b.user_id]);
+                    aValue = activeTab === 'users' ? getUserDisplayName(a) : getUserDisplayName(usersLookup[a.user_id]);
+                    bValue = activeTab === 'users' ? getUserDisplayName(b) : getUserDisplayName(usersLookup[b.user_id]);
                 }
 
                 if (aValue < bValue) return sortConfig.direction === 'asc' ? -1 : 1;
@@ -254,12 +226,9 @@ const AdminDashboard = ({ onLogout }) => {
         try {
             const { error } = await supabase.from('users').update({ role: userRole, status: userStatus }).eq('user_id', selectedUser.user_id);
             if (error) throw error;
-
-            // Якщо ми в списку користувачів - оновлюємо локально
             if (activeTab === 'users') {
                 setItems(items.map(u => u.user_id === selectedUser.user_id ? { ...u, role: userRole, status: userStatus } : u));
             }
-
             alert('Користувача оновлено!');
             setIsUserModalOpen(false);
         } catch (error) { alert(error.message); }
@@ -290,7 +259,7 @@ const AdminDashboard = ({ onLogout }) => {
 
     return (
         <div className="min-h-screen bg-slate-50 flex flex-col font-sans text-slate-900">
-            {/* --- HEADER --- */}
+            {/* HEADER */}
             <header className="bg-white border-b border-slate-200 sticky top-0 z-20 px-6 py-4 flex justify-between items-center shadow-sm">
                 <div className="flex items-center gap-3">
                     <div className="bg-slate-900 p-2 rounded-xl text-white">
@@ -307,7 +276,7 @@ const AdminDashboard = ({ onLogout }) => {
             </header>
 
             <main className="flex-1 max-w-[1400px] w-full mx-auto p-6 space-y-8">
-                {/* --- TABS --- */}
+                {/* TABS */}
                 <div className="flex flex-wrap gap-2 p-1 bg-white rounded-2xl border border-slate-200 w-fit shadow-sm">
                     <TabButton active={activeTab === 'overview'} onClick={() => setActiveTab('overview')} icon={LayoutDashboard} label="Головна" />
                     <TabButton active={activeTab === 'users'} onClick={() => setActiveTab('users')} icon={Users} label="Користувачі" />
@@ -316,7 +285,7 @@ const AdminDashboard = ({ onLogout }) => {
                     <TabButton active={activeTab === 'workouts'} onClick={() => setActiveTab('workouts')} icon={Activity} label="Вправи" />
                 </div>
 
-                {/* --- OVERVIEW TAB --- */}
+                {/* OVERVIEW */}
                 {activeTab === 'overview' && (
                     <div className="animate-fade-in">
                         <h2 className="text-2xl font-bold text-slate-800 mb-6">Огляд системи</h2>
@@ -326,17 +295,12 @@ const AdminDashboard = ({ onLogout }) => {
                             <StatCard title="Продуктів у базі" value={stats.foods} icon={Utensils} color="emerald" />
                             <StatCard title="Типів тренувань" value={stats.workouts} icon={Activity} color="purple" />
                         </div>
-                        <div className="mt-10 p-8 bg-white rounded-[2rem] border border-slate-200 text-center">
-                            <h3 className="text-lg font-bold text-slate-700 mb-2">Ласкаво просимо в адмінку FatBeaches!</h3>
-                            <p className="text-slate-500">Виберіть розділ у меню зверху для керування.</p>
-                        </div>
                     </div>
                 )}
 
-                {/* --- LIST TABLES --- */}
+                {/* TABLES */}
                 {activeTab !== 'overview' && (
                     <div className="animate-fade-in space-y-6">
-                        {/* Toolbar */}
                         <div className="flex flex-col md:flex-row gap-4 justify-between items-center">
                             <div className="flex gap-4 w-full md:w-auto">
                                 <div className="relative w-full md:w-80">
@@ -349,7 +313,6 @@ const AdminDashboard = ({ onLogout }) => {
                                         onChange={(e) => setSearchTerm(e.target.value)}
                                     />
                                 </div>
-                                {/* Фільтр для заявок */}
                                 {activeTab === 'applications' && (
                                     <div className="flex bg-white rounded-xl border border-slate-200 p-1">
                                         <button onClick={() => setAppFilter('pending')} className={`px-4 py-2 rounded-lg text-sm font-bold transition-all ${appFilter === 'pending' ? 'bg-orange-100 text-orange-700' : 'text-slate-500 hover:bg-slate-50'}`}>В очікуванні</button>
@@ -365,7 +328,6 @@ const AdminDashboard = ({ onLogout }) => {
                             )}
                         </div>
 
-                        {/* Table */}
                         <div className="bg-white rounded-[1.5rem] shadow-sm border border-slate-200 overflow-hidden">
                             {loading ? (
                                 <div className="flex justify-center items-center h-64 text-slate-400">Завантаження...</div>
@@ -386,7 +348,6 @@ const AdminDashboard = ({ onLogout }) => {
                                         </thead>
                                         <tbody className="divide-y divide-slate-100">
                                             {filteredItems.map((item) => {
-                                                // Для заявок підтягуємо юзера
                                                 const applicant = activeTab === 'applications' ? usersLookup[item.user_id] : null;
 
                                                 return (
@@ -415,7 +376,6 @@ const AdminDashboard = ({ onLogout }) => {
                                                         </td>
 
                                                         <td className="p-5">
-                                                            {/* Статус заявки */}
                                                             {activeTab === 'applications' && (
                                                                 <span className={`px-3 py-1.5 rounded-lg text-xs font-black uppercase tracking-wide border ${item.status === 'pending' ? 'bg-orange-50 text-orange-600 border-orange-200' :
                                                                         item.status === 'approved' ? 'bg-emerald-50 text-emerald-600 border-emerald-200' :
@@ -424,16 +384,18 @@ const AdminDashboard = ({ onLogout }) => {
                                                                     {item.status === 'pending' ? 'Очікує' : item.status === 'approved' ? 'Схвалено' : 'Відхилено'}
                                                                 </span>
                                                             )}
-
-                                                            {/* Калорії для їжі */}
                                                             {activeTab === 'foods' && (
-                                                                <span className="bg-orange-50 text-orange-600 px-2 py-1 rounded-md text-xs font-bold border border-orange-100">{item.calories} ккал</span>
+                                                                <div className="flex flex-wrap gap-2 text-xs font-bold">
+                                                                    <span className="bg-orange-50 text-orange-600 px-2 py-1 rounded-md">{item.calories} ккал</span>
+                                                                    {/* ВИПРАВЛЕНО: відображення з правильних колонок */}
+                                                                    {item.proteins > 0 && <span className="bg-blue-50 text-blue-600 px-2 py-1 rounded-md">Б: {item.proteins}</span>}
+                                                                    {item.fats > 0 && <span className="bg-yellow-50 text-yellow-600 px-2 py-1 rounded-md">Ж: {item.fats}</span>}
+                                                                    {item.carbohydrates > 0 && <span className="bg-emerald-50 text-emerald-600 px-2 py-1 rounded-md">В: {item.carbohydrates}</span>}
+                                                                </div>
                                                             )}
-
-                                                            {/* Роль для користувачів */}
                                                             {activeTab === 'users' && (
                                                                 <div className="flex items-center gap-2">
-                                                                    <span className={`px-2 py-1 rounded text-xs font-bold uppercase ${item.role === 'admin' ? 'bg-purple-100 text-purple-600' : item.role === 'trainer' ? 'bg-indigo-100 text-indigo-600' : 'bg-slate-100 text-slate-600'}`}>{item.role || 'customer'}</span>
+                                                                    <span className={`px-2 py-1 rounded text-xs font-bold uppercase ${item.role === 'admin' ? 'bg-purple-100 text-purple-600' : 'bg-slate-100 text-slate-600'}`}>{item.role || 'customer'}</span>
                                                                     <span className={`px-2 py-1 rounded text-xs font-bold uppercase ${item.status === 'banned' ? 'bg-red-100 text-red-600' : 'bg-emerald-50 text-emerald-600'}`}>{item.status || 'Active'}</span>
                                                                 </div>
                                                             )}
@@ -441,29 +403,22 @@ const AdminDashboard = ({ onLogout }) => {
 
                                                         <td className="p-5 text-right">
                                                             <div className="flex justify-end gap-2">
-                                                                {/* Кнопки для заявок */}
                                                                 {activeTab === 'applications' && item.status === 'pending' && (
                                                                     <>
-                                                                        <button onClick={() => handleApplication(item.id, item.user_id, 'approved')} className="flex items-center gap-1 px-3 py-2 bg-emerald-500 hover:bg-emerald-600 text-white rounded-lg text-xs font-bold transition-all shadow-md shadow-emerald-200" title="Схвалити">
+                                                                        <button onClick={() => handleApplication(item.id, item.user_id, 'approved')} className="flex items-center gap-1 px-3 py-2 bg-emerald-500 hover:bg-emerald-600 text-white rounded-lg text-xs font-bold transition-all shadow-md shadow-emerald-200">
                                                                             <Check size={14} /> Схвалити
                                                                         </button>
-                                                                        <button onClick={() => handleApplication(item.id, item.user_id, 'rejected')} className="flex items-center gap-1 px-3 py-2 bg-white border border-red-200 text-red-600 hover:bg-red-50 rounded-lg text-xs font-bold transition-all" title="Відхилити">
+                                                                        <button onClick={() => handleApplication(item.id, item.user_id, 'rejected')} className="flex items-center gap-1 px-3 py-2 bg-white border border-red-200 text-red-600 hover:bg-red-50 rounded-lg text-xs font-bold transition-all">
                                                                             <XOctagon size={14} /> Відхилити
                                                                         </button>
                                                                     </>
                                                                 )}
-
-                                                                {/* Кнопка перегляду профілю */}
                                                                 {activeTab === 'users' && (
                                                                     <button onClick={() => handleViewUser(item)} className="p-2 bg-white border hover:border-blue-300 hover:text-blue-600 rounded-lg text-slate-400 transition-all"><Eye size={16} /></button>
                                                                 )}
-
-                                                                {/* Кнопка редагування */}
                                                                 {(activeTab === 'foods' || activeTab === 'workouts') && (
                                                                     <button onClick={() => openModal(item)} className="p-2 bg-white border hover:border-blue-300 hover:text-blue-600 rounded-lg text-slate-400 transition-all"><Edit2 size={16} /></button>
                                                                 )}
-
-                                                                {/* Кнопка видалення */}
                                                                 <button onClick={() => handleDelete(item.id || item.user_id)} className="p-2 bg-white border hover:border-red-300 hover:text-red-600 rounded-lg text-slate-400 transition-all"><Trash2 size={16} /></button>
                                                             </div>
                                                         </td>
@@ -499,9 +454,10 @@ const AdminDashboard = ({ onLogout }) => {
                             {activeTab === 'foods' && (
                                 <div className="grid grid-cols-2 gap-4">
                                     <div><label className="text-xs font-bold text-slate-500">Калорії</label><input type="number" className="w-full p-3 bg-slate-50 rounded-xl outline-none" value={formData.calories || ''} onChange={e => setFormData({ ...formData, calories: e.target.value })} /></div>
-                                    <div><label className="text-xs font-bold text-slate-500">Білки</label><input type="number" className="w-full p-3 bg-slate-50 rounded-xl outline-none" value={formData.protein || ''} onChange={e => setFormData({ ...formData, protein: e.target.value })} /></div>
-                                    <div><label className="text-xs font-bold text-slate-500">Жири</label><input type="number" className="w-full p-3 bg-slate-50 rounded-xl outline-none" value={formData.fat || ''} onChange={e => setFormData({ ...formData, fat: e.target.value })} /></div>
-                                    <div><label className="text-xs font-bold text-slate-500">Вуглеводи</label><input type="number" className="w-full p-3 bg-slate-50 rounded-xl outline-none" value={formData.carbs || ''} onChange={e => setFormData({ ...formData, carbs: e.target.value })} /></div>
+                                    {/* ВИПРАВЛЕНО: proteins, fats, carbohydrates замість protein, fat, carbs */}
+                                    <div><label className="text-xs font-bold text-slate-500">Білки</label><input type="number" className="w-full p-3 bg-slate-50 rounded-xl outline-none" value={formData.proteins || ''} onChange={e => setFormData({ ...formData, proteins: e.target.value })} /></div>
+                                    <div><label className="text-xs font-bold text-slate-500">Жири</label><input type="number" className="w-full p-3 bg-slate-50 rounded-xl outline-none" value={formData.fats || ''} onChange={e => setFormData({ ...formData, fats: e.target.value })} /></div>
+                                    <div><label className="text-xs font-bold text-slate-500">Вуглеводи</label><input type="number" className="w-full p-3 bg-slate-50 rounded-xl outline-none" value={formData.carbohydrates || ''} onChange={e => setFormData({ ...formData, carbohydrates: e.target.value })} /></div>
                                 </div>
                             )}
                             <button onClick={handleSaveItem} className="w-full bg-blue-600 text-white font-bold py-3 rounded-xl mt-4 flex justify-center gap-2"><Save size={20} /> Зберегти</button>
