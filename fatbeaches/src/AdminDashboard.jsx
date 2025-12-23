@@ -1,164 +1,239 @@
-import React, { useState, useEffect, useCallback } from 'react';
-import { Loader2 } from 'lucide-react';
+п»їimport React, { useState, useEffect } from 'react';
+import { Users, Utensils, Activity, Plus, Trash2, Save, X, Search } from 'lucide-react';
 import { supabase } from './supabase';
 
-// Імпорти компонентів (переконайтеся, що шляхи правильні)
-import AuthPage from './AuthPage';
-import RoleSelection from './RoleSelection';
-import ProfileSetup from './ProfileSetup';
-import Dashboard from './Dashboard';
-import TrainerVerification from './TrainerVerification';
-import AdminDashboard from './AdminDashboard'; // <--- ДОДАНО
-
-// Тимчасова заглушка для TrainerPending, якщо немає окремого файлу
-const TrainerPending = () => <div className="p-10 text-center">Заявка на розгляді</div>;
-
-function App() {
-    const [session, setSession] = useState(null);
-    const [role, setRole] = useState(null); // Тут буде 'customer', 'trainer' або 'admin'
-    const [profile, setProfile] = useState(null);
-    const [trainerApp, setTrainerApp] = useState(null);
+const AdminDashboard = ({ onLogout }) => {
+    const [activeTab, setActiveTab] = useState('foods');
+    const [items, setItems] = useState([]);
     const [loading, setLoading] = useState(true);
-    const [isEditingProfile, setIsEditingProfile] = useState(false);
+    const [searchTerm, setSearchTerm] = useState('');
 
-    // Функція перевірки статусу користувача
-    const checkUserStatus = useCallback(async (userId) => {
-        try {
-            // 1. Отримуємо роль з таблиці users
-            const { data: userData } = await supabase
-                .from('users')
-                .select('role')
-                .eq('user_id', userId)
-                .single();
-
-            if (userData) {
-                setRole(userData.role);
-
-                // 2. Логіка завантаження даних залежно від ролі
-                if (userData.role === 'admin') {
-                    // Для адміна додаткові дані (профіль/заявка) не потрібні
-                    setLoading(false);
-                    return;
-                }
-
-                if (userData.role === 'trainer') {
-                    const { data: appData } = await supabase
-                        .from('trainer_applications')
-                        .select('*')
-                        .eq('user_id', userId)
-                        .single();
-                    setTrainerApp(appData);
-                } else {
-                    // За замовчуванням вважаємо клієнтом ('customer')
-                    const { data: profileData } = await supabase
-                        .from('user_profiles')
-                        .select('*')
-                        .eq('user_id', userId)
-                        .single();
-                    if (profileData) {
-                        setProfile(profileData);
-                    }
-                }
-            }
-        } catch (error) {
-            console.error("Error checking user status:", error);
-        } finally {
-            setLoading(false);
-        }
-    }, []);
+    const [isModalOpen, setIsModalOpen] = useState(false);
+    const [newItem, setNewItem] = useState({});
 
     useEffect(() => {
-        // Перевірка сесії при завантаженні
-        supabase.auth.getSession().then(({ data: { session } }) => {
-            setSession(session);
-            if (session) checkUserStatus(session.user.id);
-            else setLoading(false);
-        });
+        const fetchData = async () => {
+            setLoading(true);
+            try {
+                let query;
+                if (activeTab === 'users') {
+                    query = supabase.from('user_profiles').select('*');
+                } else if (activeTab === 'foods') {
+                    query = supabase.from('food_items').select('*').order('name');
+                } else if (activeTab === 'workouts') {
+                    query = supabase.from('workout_items').select('*').order('name');
+                }
 
-        // Слухач змін авторизації (вхід/вихід)
-        const { data: { subscription } } = supabase.auth.onAuthStateChange((_event, session) => {
-            setSession(session);
-            if (session) {
-                checkUserStatus(session.user.id);
-            } else {
-                // Скидання стану при виході
-                setRole(null);
-                setProfile(null);
-                setTrainerApp(null);
+                const { data, error } = await query;
+                if (error) throw error;
+                setItems(data || []);
+            } catch (error) {
+                console.error('Error fetching data:', error);
+            } finally {
                 setLoading(false);
             }
-        });
+        };
 
-        return () => subscription.unsubscribe();
-    }, [checkUserStatus]);
+        fetchData();
+    }, [activeTab]);
 
-    const handleBackToRole = async () => {
-        setRole(null);
+    const handleDelete = async (id) => {
+        if (!window.confirm('Р’Рё РІРїРµРІРЅРµРЅС–, С‰Рѕ С…РѕС‡РµС‚Рµ РІРёРґР°Р»РёС‚Рё С†РµР№ Р·Р°РїРёСЃ?')) return;
+
+        try {
+            const table = activeTab === 'foods' ? 'food_items' :
+                activeTab === 'workouts' ? 'workout_items' : 'user_profiles';
+
+            const { error } = await supabase.from(table).delete().eq('id', id);
+            if (error) throw error;
+
+            setItems(items.filter(item => item.id !== id));
+        } catch (error) {
+            alert('РџРѕРјРёР»РєР° РІРёРґР°Р»РµРЅРЅСЏ: ' + error.message);
+        }
     };
 
-    const handleLogout = async () => {
-        await supabase.auth.signOut();
+    const handleAdd = async () => {
+        try {
+            const table = activeTab === 'foods' ? 'food_items' : 'workout_items';
+            const { data, error } = await supabase.from(table).insert([newItem]).select();
+
+            if (error) throw error;
+
+            setItems([...items, data[0]]);
+            setIsModalOpen(false);
+            setNewItem({});
+        } catch (error) {
+            alert('РџРѕРјРёР»РєР° РґРѕРґР°РІР°РЅРЅСЏ: ' + error.message);
+        }
     };
 
-    // 1. Екран завантаження
-    if (loading) {
-        return (
-            <div className="h-screen flex items-center justify-center bg-slate-50">
-                <Loader2 className="animate-spin text-emerald-500 w-10 h-10" />
-            </div>
-        );
-    }
+    const filteredItems = items.filter(item =>
+        (item.name && item.name.toLowerCase().includes(searchTerm.toLowerCase())) ||
+        (item.email && item.email.toLowerCase().includes(searchTerm.toLowerCase()))
+    );
 
-    // 2. Якщо немає сесії -> Авторизація
-    if (!session) return <AuthPage />;
+    return (
+        <div className="min-h-screen bg-slate-50 flex flex-col">
+            <header className="bg-slate-900 text-white p-4 shadow-lg sticky top-0 z-10">
+                <div className="max-w-7xl mx-auto flex justify-between items-center">
+                    <div className="flex items-center gap-3">
+                        <div className="bg-blue-500 p-2 rounded-lg">
+                            <Activity size={24} className="text-white" />
+                        </div>
+                        <h1 className="text-xl font-bold tracking-tight">FatBeaches Admin</h1>
+                    </div>
+                    <button onClick={onLogout} className="text-slate-400 hover:text-white transition-colors text-sm font-medium">
+                        Р’РёР№С‚Рё
+                    </button>
+                </div>
+            </header>
 
-    // 3. Якщо роль АДМІН -> Адмін Панель (НОВЕ)
-    if (role === 'admin') {
-        return <AdminDashboard session={session} onLogout={handleLogout} />;
-    }
+            <main className="flex-1 max-w-7xl w-full mx-auto p-4 md:p-6 space-y-6">
+                <div className="flex gap-2 overflow-x-auto pb-2">
+                    <TabButton active={activeTab === 'foods'} onClick={() => setActiveTab('foods')} icon={Utensils} label="РџСЂРѕРґСѓРєС‚Рё" />
+                    <TabButton active={activeTab === 'workouts'} onClick={() => setActiveTab('workouts')} icon={Activity} label="Р’РїСЂР°РІРё" />
+                    <TabButton active={activeTab === 'users'} onClick={() => setActiveTab('users')} icon={Users} label="РљРѕСЂРёСЃС‚СѓРІР°С‡С–" />
+                </div>
 
-    // 4. Логіка для нових користувачів (без ролі або профілю)
-    if (!profile && !trainerApp && (role === 'customer' || !role)) {
-        if (!role) {
-            return <RoleSelection session={session} onRoleSelected={(r) => setRole(r)} />;
-        }
-        if (role === 'customer') {
-            return <ProfileSetup session={session} onBack={handleBackToRole} onComplete={() => checkUserStatus(session.user.id)} />;
-        }
-        if (role === 'trainer') {
-            return <TrainerVerification session={session} onBack={handleBackToRole} onSubmitted={() => checkUserStatus(session.user.id)} />;
-        }
-    }
+                <div className="flex flex-col sm:flex-row gap-4 justify-between items-center bg-white p-4 rounded-2xl shadow-sm border border-slate-100">
+                    <div className="relative w-full sm:w-96">
+                        <Search className="absolute left-3 top-1/2 -translate-y-1/2 text-slate-400" size={20} />
+                        <input
+                            type="text"
+                            placeholder="РџРѕС€СѓРє..."
+                            className="w-full pl-10 pr-4 py-2 bg-slate-50 border-none rounded-xl focus:ring-2 focus:ring-blue-500 transition-all outline-none text-slate-700"
+                            value={searchTerm}
+                            onChange={(e) => setSearchTerm(e.target.value)}
+                        />
+                    </div>
+                    {activeTab !== 'users' && (
+                        <button
+                            onClick={() => setIsModalOpen(true)}
+                            className="w-full sm:w-auto flex items-center justify-center gap-2 bg-blue-600 hover:bg-blue-700 text-white px-6 py-2.5 rounded-xl font-bold transition-all shadow-md shadow-blue-200"
+                        >
+                            <Plus size={20} /> Р”РѕРґР°С‚Рё Р·Р°РїРёСЃ
+                        </button>
+                    )}
+                </div>
 
-    // 5. Логіка для Тренера
-    if (role === 'trainer') {
-        if (!trainerApp) {
-            return <TrainerVerification session={session} onBack={handleBackToRole} onSubmitted={() => checkUserStatus(session.user.id)} />;
-        }
-        if (trainerApp.status === 'pending') {
-            return <TrainerPending />;
-        }
-        return <div className="p-10 text-center">Тренерська панель (В розробці)</div>;
-    }
+                <div className="bg-white rounded-[2rem] shadow-sm border border-slate-100 overflow-hidden min-h-[400px]">
+                    {loading ? (
+                        <div className="flex justify-center items-center h-64 text-slate-400">Р—Р°РІР°РЅС‚Р°Р¶РµРЅРЅСЏ...</div>
+                    ) : filteredItems.length > 0 ? (
+                        <div className="overflow-x-auto">
+                            <table className="w-full text-left border-collapse">
+                                <thead className="bg-slate-50 border-b border-slate-100">
+                                    <tr>
+                                        <th className="p-5 text-xs font-black text-slate-400 uppercase tracking-wider">ID</th>
+                                        <th className="p-5 text-xs font-black text-slate-400 uppercase tracking-wider">РќР°Р·РІР° / Email</th>
+                                        <th className="p-5 text-xs font-black text-slate-400 uppercase tracking-wider">Р”РµС‚Р°Р»С–</th>
+                                        <th className="p-5 text-right text-xs font-black text-slate-400 uppercase tracking-wider">Р”С–С—</th>
+                                    </tr>
+                                </thead>
+                                <tbody className="divide-y divide-slate-50">
+                                    {filteredItems.map((item) => (
+                                        <tr key={item.id} className="hover:bg-slate-50 transition-colors group">
+                                            <td className="p-5 text-slate-400 font-mono text-xs">{item.id}</td>
+                                            <td className="p-5 font-bold text-slate-700">{item.name || item.email || 'Р‘РµР· РЅР°Р·РІРё'}</td>
+                                            <td className="p-5 text-sm text-slate-500">
+                                                {activeTab === 'foods' && `${item.calories} РєРєР°Р»`}
+                                                {activeTab === 'users' && `Р РѕР»СЊ: ${item.role}`}
+                                                {activeTab === 'workouts' && 'РђРєС‚РёРІРЅС–СЃС‚СЊ'}
+                                            </td>
+                                            <td className="p-5 text-right">
+                                                <button
+                                                    onClick={() => handleDelete(item.id)}
+                                                    className="p-2 text-slate-300 hover:text-red-500 hover:bg-red-50 rounded-lg transition-all"
+                                                >
+                                                    <Trash2 size={18} />
+                                                </button>
+                                            </td>
+                                        </tr>
+                                    ))}
+                                </tbody>
+                            </table>
+                        </div>
+                    ) : (
+                        <div className="flex flex-col items-center justify-center h-64 text-slate-400">
+                            <p>Р—Р°РїРёСЃС–РІ РЅРµ Р·РЅР°Р№РґРµРЅРѕ</p>
+                        </div>
+                    )}
+                </div>
+            </main>
 
-    // 6. Редагування профілю
-    if (isEditingProfile) {
-        return (
-            <ProfileSetup
-                session={session}
-                initialData={profile}
-                onComplete={() => { setIsEditingProfile(false); checkUserStatus(session.user.id); }}
-            />
-        );
-    }
+            {isModalOpen && (
+                <div className="fixed inset-0 bg-black/50 backdrop-blur-sm z-50 flex items-center justify-center p-4">
+                    <div className="bg-white w-full max-w-md rounded-3xl p-6 shadow-2xl animate-fade-in">
+                        <div className="flex justify-between items-center mb-6">
+                            <h3 className="text-xl font-bold text-slate-800">
+                                {activeTab === 'foods' ? 'Р”РѕРґР°С‚Рё РїСЂРѕРґСѓРєС‚' : 'Р”РѕРґР°С‚Рё РІРїСЂР°РІСѓ'}
+                            </h3>
+                            <button onClick={() => setIsModalOpen(false)} className="p-2 hover:bg-slate-100 rounded-full text-slate-500">
+                                <X size={20} />
+                            </button>
+                        </div>
 
-    // 7. Якщо роль customer, але профіль не завантажився (рідкісний кейс, але можливий)
-    if (!profile && role === 'customer') {
-        return <ProfileSetup session={session} onBack={handleBackToRole} onComplete={() => checkUserStatus(session.user.id)} />;
-    }
+                        <div className="space-y-4">
+                            <div>
+                                <label className="block text-sm font-bold text-slate-700 mb-1">РќР°Р·РІР°</label>
+                                <input
+                                    type="text"
+                                    className="w-full p-3 bg-slate-50 rounded-xl outline-none focus:ring-2 focus:ring-blue-500"
+                                    value={newItem.name || ''}
+                                    onChange={e => setNewItem({ ...newItem, name: e.target.value })}
+                                />
+                            </div>
 
-    // 8. Головний Дашборд Клієнта
-    return <Dashboard session={session} profile={profile} onEditProfile={() => setIsEditingProfile(true)} />;
-}
+                            {activeTab === 'foods' && (
+                                <div className="grid grid-cols-2 gap-4">
+                                    <div>
+                                        <label className="block text-sm font-bold text-slate-700 mb-1">РљР°Р»РѕСЂС–С—</label>
+                                        <input
+                                            type="number"
+                                            className="w-full p-3 bg-slate-50 rounded-xl outline-none focus:ring-2 focus:ring-blue-500"
+                                            value={newItem.calories || ''}
+                                            onChange={e => setNewItem({ ...newItem, calories: e.target.value })}
+                                        />
+                                    </div>
+                                    <div>
+                                        <label className="block text-sm font-bold text-slate-700 mb-1">Р‘С–Р»РєРё</label>
+                                        <input
+                                            type="number"
+                                            className="w-full p-3 bg-slate-50 rounded-xl outline-none focus:ring-2 focus:ring-blue-500"
+                                            value={newItem.protein || ''}
+                                            onChange={e => setNewItem({ ...newItem, protein: e.target.value })}
+                                        />
+                                    </div>
+                                </div>
+                            )}
 
-export default App;
+                            <button
+                                onClick={handleAdd}
+                                className="w-full bg-blue-600 hover:bg-blue-700 text-white font-bold py-3 rounded-xl mt-4 flex items-center justify-center gap-2 transition-all"
+                            >
+                                <Save size={20} /> Р—Р±РµСЂРµРіС‚Рё
+                            </button>
+                        </div>
+                    </div>
+                </div>
+            )}
+        </div>
+    );
+};
+
+// Р’РёРєРѕСЂРёСЃС‚РѕРІСѓС”РјРѕ React.createElement, С‰РѕР± Р»С–РЅС‚РµСЂ РЅРµ СЃРІР°СЂРёРІСЃСЏ РЅР° "РЅРµРІРёРєРѕСЂРёСЃС‚Р°РЅСѓ" Р·РјС–РЅРЅСѓ
+const TabButton = ({ active, onClick, icon, label }) => (
+    <button
+        onClick={onClick}
+        className={`flex items-center gap-2 px-6 py-3 rounded-xl font-bold transition-all whitespace-nowrap
+        ${active
+                ? 'bg-slate-800 text-white shadow-lg shadow-slate-200'
+                : 'bg-white text-slate-500 hover:bg-slate-100'}`}
+    >
+        {React.createElement(icon, { size: 18 })}
+        {label}
+    </button>
+);
+
+export default AdminDashboard;
