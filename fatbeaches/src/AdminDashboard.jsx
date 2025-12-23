@@ -2,22 +2,26 @@
 import {
     Users, Utensils, Activity, Plus, Trash2, Save, X, Search,
     Eye, Edit2, CheckCircle, AlertCircle, ArrowUpDown,
-    LayoutDashboard, FileText, Check, XOctagon
+    LayoutDashboard, FileText, Check, XOctagon, Filter
 } from 'lucide-react';
 import { supabase } from './supabase';
 
 const AdminDashboard = ({ onLogout }) => {
-    // Основні стани
-    const [activeTab, setActiveTab] = useState('overview'); // 'overview', 'users', 'foods', 'workouts', 'applications'
+    // --- ОСНОВНІ СТАНИ ---
+    const [activeTab, setActiveTab] = useState('overview');
     const [items, setItems] = useState([]);
+    const [usersLookup, setUsersLookup] = useState({}); // Кеш користувачів для швидкого пошуку імен
     const [loading, setLoading] = useState(true);
     const [searchTerm, setSearchTerm] = useState('');
     const [sortConfig, setSortConfig] = useState({ key: null, direction: 'asc' });
 
-    // Стан для статистики
+    // Статистика
     const [stats, setStats] = useState({ users: 0, foods: 0, workouts: 0, pendingTrainers: 0 });
 
-    // Стан для модальних вікон
+    // Фільтр для заявок
+    const [appFilter, setAppFilter] = useState('pending'); // 'all', 'pending', 'approved', 'rejected'
+
+    // Модальні вікна
     const [isModalOpen, setIsModalOpen] = useState(false);
     const [editingItem, setEditingItem] = useState(null);
     const [formData, setFormData] = useState({});
@@ -27,13 +31,14 @@ const AdminDashboard = ({ onLogout }) => {
     const [userProfile, setUserProfile] = useState(null);
     const [loadingProfile, setLoadingProfile] = useState(false);
 
+    // Тимчасові стани редагування юзера
     const [userRole, setUserRole] = useState('');
     const [userStatus, setUserStatus] = useState('');
 
     useEffect(() => {
         fetchData();
         if (activeTab === 'overview') fetchStats();
-    }, [activeTab]);
+    }, [activeTab, appFilter]); // Перезавантажувати при зміні фільтру заявок
 
     // --- ОТРИМАННЯ СТАТИСТИКИ ---
     const fetchStats = async () => {
@@ -56,27 +61,53 @@ const AdminDashboard = ({ onLogout }) => {
         }
     };
 
-    // --- ОТРИМАННЯ ДАНИХ ТАБЛИЦЬ ---
+    // --- ОТРИМАННЯ ДАНИХ ---
     const fetchData = async () => {
-        if (activeTab === 'overview') return; // Для огляду дані не потрібні тут
+        if (activeTab === 'overview') return;
 
         setLoading(true);
         try {
-            let query;
+            let data = [];
+
             if (activeTab === 'users') {
-                query = supabase.from('users').select('*');
-            } else if (activeTab === 'foods') {
-                query = supabase.from('food_items').select('*').order('name');
-            } else if (activeTab === 'workouts') {
-                query = supabase.from('workout_items').select('*').order('name');
-            } else if (activeTab === 'applications') {
-                // Отримуємо заявки разом з даними користувача (якщо зв'язок налаштований)
-                // Якщо зв'язку FK немає, просто беремо заявки
-                query = supabase.from('trainer_applications').select('*').order('created_at', { ascending: false });
+                const { data: users, error } = await supabase.from('users').select('*');
+                if (error) throw error;
+                data = users;
+            }
+            else if (activeTab === 'foods') {
+                const { data: foods, error } = await supabase.from('food_items').select('*').order('name');
+                if (error) throw error;
+                data = foods;
+            }
+            else if (activeTab === 'workouts') {
+                const { data: workouts, error } = await supabase.from('workout_items').select('*').order('name');
+                if (error) throw error;
+                data = workouts;
+            }
+            else if (activeTab === 'applications') {
+                // 1. Отримуємо заявки
+                let query = supabase.from('trainer_applications').select('*').order('created_at', { ascending: false });
+
+                if (appFilter !== 'all') {
+                    query = query.eq('status', appFilter);
+                }
+
+                const { data: apps, error: appError } = await query;
+                if (appError) throw appError;
+
+                // 2. Отримуємо список всіх користувачів, щоб підставити імена замість ID
+                // (Це простіше, ніж налаштовувати складні Join-и, якщо FK не ідеальні)
+                const { data: users, error: userError } = await supabase.from('users').select('user_id, email, name, first_name, last_name');
+
+                if (!userError && users) {
+                    const lookup = {};
+                    users.forEach(u => lookup[u.user_id] = u);
+                    setUsersLookup(lookup); // Зберігаємо для рендеру
+                }
+
+                data = apps;
             }
 
-            const { data, error } = await query;
-            if (error) throw error;
             setItems(data || []);
         } catch (error) {
             console.error('Error fetching data:', error);
@@ -85,9 +116,10 @@ const AdminDashboard = ({ onLogout }) => {
         }
     };
 
-    // --- ЛОГІКА ЗАЯВОК ТРЕНЕРІВ ---
+    // --- ЛОГІКА ЗАЯВОК (APPROVE / REJECT) ---
     const handleApplication = async (appId, userId, action) => {
-        if (!window.confirm(`Ви впевнені, що хочете ${action === 'approved' ? 'схвалити' : 'відхилити'} цю заявку?`)) return;
+        const actionText = action === 'approved' ? 'схвалити' : 'відхилити';
+        if (!window.confirm(`Ви впевнені, що хочете ${actionText} цю заявку?`)) return;
 
         try {
             // 1. Оновлюємо статус заявки
@@ -98,19 +130,27 @@ const AdminDashboard = ({ onLogout }) => {
 
             if (appError) throw appError;
 
-            // 2. Якщо схвалено, оновлюємо роль користувача
+            // 2. Якщо СХВАЛЕНО -> змінюємо роль користувача на 'trainer'
             if (action === 'approved') {
                 const { error: userError } = await supabase
                     .from('users')
                     .update({ role: 'trainer' })
                     .eq('user_id', userId);
 
-                if (userError) throw userError;
+                if (userError) {
+                    alert('Заявку оновлено, але не вдалося змінити роль користувача: ' + userError.message);
+                }
             }
 
-            alert(`Заявку успішно ${action === 'approved' ? 'схвалено' : 'відхилено'}!`);
-            fetchData(); // Оновити список
-            fetchStats(); // Оновити лічильники
+            alert(`Успішно! Заявка ${action === 'approved' ? 'схвалена' : 'відхилена'}.`);
+
+            // Оновлюємо список (видаляємо оброблену заявку з візуального списку, якщо фільтр 'pending')
+            if (appFilter === 'pending') {
+                setItems(items.filter(item => item.id !== appId));
+            } else {
+                fetchData(); // Перезавантажити все, якщо дивимось загальний список
+            }
+            fetchStats(); // Оновити бейджі
         } catch (error) {
             alert('Помилка: ' + error.message);
         }
@@ -130,19 +170,26 @@ const AdminDashboard = ({ onLogout }) => {
             sortableItems.sort((a, b) => {
                 let aValue = a[sortConfig.key] || '';
                 let bValue = b[sortConfig.key] || '';
-                if (activeTab === 'users' && sortConfig.key === 'name') {
-                    aValue = getUserDisplayName(a);
-                    bValue = getUserDisplayName(b);
+
+                // Спеціальна логіка для імен користувачів
+                if ((activeTab === 'users' || activeTab === 'applications') && sortConfig.key === 'name') {
+                    aValue = activeTab === 'users'
+                        ? getUserDisplayName(a)
+                        : getUserDisplayName(usersLookup[a.user_id]);
+                    bValue = activeTab === 'users'
+                        ? getUserDisplayName(b)
+                        : getUserDisplayName(usersLookup[b.user_id]);
                 }
+
                 if (aValue < bValue) return sortConfig.direction === 'asc' ? -1 : 1;
                 if (aValue > bValue) return sortConfig.direction === 'asc' ? 1 : -1;
                 return 0;
             });
         }
         return sortableItems;
-    }, [items, sortConfig, activeTab]);
+    }, [items, sortConfig, activeTab, usersLookup]);
 
-    // --- CRUD ОПЕРАЦІЇ ---
+    // --- CRUD ---
     const handleDelete = async (id) => {
         if (!window.confirm('Видалити цей запис?')) return;
         try {
@@ -177,7 +224,7 @@ const AdminDashboard = ({ onLogout }) => {
                 setItems([...items, result.data[0]]);
             }
             setIsModalOpen(false);
-            fetchStats(); // Оновити статистику
+            fetchStats();
         } catch (error) { alert(error.message); }
     };
 
@@ -207,14 +254,19 @@ const AdminDashboard = ({ onLogout }) => {
         try {
             const { error } = await supabase.from('users').update({ role: userRole, status: userStatus }).eq('user_id', selectedUser.user_id);
             if (error) throw error;
-            setItems(items.map(u => u.user_id === selectedUser.user_id ? { ...u, role: userRole, status: userStatus } : u));
-            alert('Оновлено!');
+
+            // Якщо ми в списку користувачів - оновлюємо локально
+            if (activeTab === 'users') {
+                setItems(items.map(u => u.user_id === selectedUser.user_id ? { ...u, role: userRole, status: userStatus } : u));
+            }
+
+            alert('Користувача оновлено!');
             setIsUserModalOpen(false);
         } catch (error) { alert(error.message); }
     };
 
     function getUserDisplayName(user) {
-        if (!user) return 'Користувач';
+        if (!user) return 'Невідомий';
         if (user.name) return user.name;
         if (user.first_name && user.last_name) return `${user.first_name} ${user.last_name}`;
         if (user.full_name) return user.full_name;
@@ -224,9 +276,16 @@ const AdminDashboard = ({ onLogout }) => {
 
     const filteredItems = sortedItems.filter(item => {
         const term = searchTerm.toLowerCase();
-        const name = (item.name || getUserDisplayName(item) || '').toLowerCase();
-        const email = (item.email || '').toLowerCase();
-        return name.includes(term) || email.includes(term);
+        let searchString = '';
+
+        if (activeTab === 'applications') {
+            const user = usersLookup[item.user_id];
+            searchString = (user ? getUserDisplayName(user) + user.email : item.user_id).toLowerCase();
+        } else {
+            searchString = (item.name || getUserDisplayName(item) || '').toLowerCase() + (item.email || '').toLowerCase();
+        }
+
+        return searchString.includes(term);
     });
 
     return (
@@ -267,28 +326,38 @@ const AdminDashboard = ({ onLogout }) => {
                             <StatCard title="Продуктів у базі" value={stats.foods} icon={Utensils} color="emerald" />
                             <StatCard title="Типів тренувань" value={stats.workouts} icon={Activity} color="purple" />
                         </div>
-
                         <div className="mt-10 p-8 bg-white rounded-[2rem] border border-slate-200 text-center">
                             <h3 className="text-lg font-bold text-slate-700 mb-2">Ласкаво просимо в адмінку FatBeaches!</h3>
-                            <p className="text-slate-500">Виберіть розділ у меню зверху, щоб почати керування базою даних.</p>
+                            <p className="text-slate-500">Виберіть розділ у меню зверху для керування.</p>
                         </div>
                     </div>
                 )}
 
-                {/* --- OTHER TABS (TABLES) --- */}
+                {/* --- LIST TABLES --- */}
                 {activeTab !== 'overview' && (
                     <div className="animate-fade-in space-y-6">
+                        {/* Toolbar */}
                         <div className="flex flex-col md:flex-row gap-4 justify-between items-center">
-                            <div className="relative w-full md:w-96">
-                                <Search className="absolute left-3 top-1/2 -translate-y-1/2 text-slate-400" size={18} />
-                                <input
-                                    type="text"
-                                    placeholder="Пошук..."
-                                    className="w-full pl-10 pr-4 py-3 bg-white border border-slate-200 rounded-xl focus:ring-2 focus:ring-blue-500 outline-none transition-all shadow-sm"
-                                    value={searchTerm}
-                                    onChange={(e) => setSearchTerm(e.target.value)}
-                                />
+                            <div className="flex gap-4 w-full md:w-auto">
+                                <div className="relative w-full md:w-80">
+                                    <Search className="absolute left-3 top-1/2 -translate-y-1/2 text-slate-400" size={18} />
+                                    <input
+                                        type="text"
+                                        placeholder="Пошук..."
+                                        className="w-full pl-10 pr-4 py-3 bg-white border border-slate-200 rounded-xl focus:ring-2 focus:ring-blue-500 outline-none transition-all shadow-sm"
+                                        value={searchTerm}
+                                        onChange={(e) => setSearchTerm(e.target.value)}
+                                    />
+                                </div>
+                                {/* Фільтр для заявок */}
+                                {activeTab === 'applications' && (
+                                    <div className="flex bg-white rounded-xl border border-slate-200 p-1">
+                                        <button onClick={() => setAppFilter('pending')} className={`px-4 py-2 rounded-lg text-sm font-bold transition-all ${appFilter === 'pending' ? 'bg-orange-100 text-orange-700' : 'text-slate-500 hover:bg-slate-50'}`}>В очікуванні</button>
+                                        <button onClick={() => setAppFilter('all')} className={`px-4 py-2 rounded-lg text-sm font-bold transition-all ${appFilter === 'all' ? 'bg-slate-100 text-slate-700' : 'text-slate-500 hover:bg-slate-50'}`}>Всі</button>
+                                    </div>
+                                )}
                             </div>
+
                             {activeTab !== 'users' && activeTab !== 'applications' && (
                                 <button onClick={() => openModal(null)} className="w-full md:w-auto flex items-center justify-center gap-2 bg-blue-600 hover:bg-blue-700 text-white px-6 py-3 rounded-xl font-bold transition-all shadow-lg shadow-blue-200">
                                     <Plus size={20} /> Додати запис
@@ -296,6 +365,7 @@ const AdminDashboard = ({ onLogout }) => {
                             )}
                         </div>
 
+                        {/* Table */}
                         <div className="bg-white rounded-[1.5rem] shadow-sm border border-slate-200 overflow-hidden">
                             {loading ? (
                                 <div className="flex justify-center items-center h-64 text-slate-400">Завантаження...</div>
@@ -306,74 +376,100 @@ const AdminDashboard = ({ onLogout }) => {
                                             <tr>
                                                 <th onClick={() => handleSort('name')} className="p-5 text-xs font-black text-slate-400 uppercase cursor-pointer hover:text-blue-600 group">
                                                     <div className="flex items-center gap-1">
-                                                        {activeTab === 'applications' ? 'Користувач / Статус' : 'Назва / Email'}
+                                                        {activeTab === 'applications' ? 'Кандидат / Дата' : 'Назва / Email'}
                                                         <ArrowUpDown size={12} className="opacity-0 group-hover:opacity-100" />
                                                     </div>
                                                 </th>
-                                                <th className="p-5 text-xs font-black text-slate-400 uppercase">Деталі</th>
+                                                <th className="p-5 text-xs font-black text-slate-400 uppercase">Деталі / Статус</th>
                                                 <th className="p-5 text-right text-xs font-black text-slate-400 uppercase">Дії</th>
                                             </tr>
                                         </thead>
                                         <tbody className="divide-y divide-slate-100">
-                                            {filteredItems.map((item) => (
-                                                <tr key={item.id || item.user_id} className="hover:bg-slate-50/80 transition-colors group">
-                                                    <td className="p-5">
-                                                        {activeTab === 'applications' ? (
-                                                            <div>
-                                                                <div className="font-bold text-slate-700">User ID: {item.user_id?.substring(0, 8)}...</div>
-                                                                <div className="text-xs text-slate-400 mt-1">{new Date(item.created_at).toLocaleDateString()}</div>
-                                                            </div>
-                                                        ) : (
-                                                            <div>
-                                                                <div className="font-bold text-slate-700 text-base">
-                                                                    {activeTab === 'users' ? getUserDisplayName(item) : (item.name || 'Без назви')}
+                                            {filteredItems.map((item) => {
+                                                // Для заявок підтягуємо юзера
+                                                const applicant = activeTab === 'applications' ? usersLookup[item.user_id] : null;
+
+                                                return (
+                                                    <tr key={item.id || item.user_id} className="hover:bg-slate-50/80 transition-colors group">
+                                                        <td className="p-5">
+                                                            {activeTab === 'applications' ? (
+                                                                <div>
+                                                                    <div className="font-bold text-slate-700 text-base">
+                                                                        {applicant ? getUserDisplayName(applicant) : 'Невідомий користувач'}
+                                                                    </div>
+                                                                    <div className="text-xs text-slate-400 mt-1">
+                                                                        {applicant?.email || `ID: ${item.user_id.substring(0, 8)}`}
+                                                                    </div>
+                                                                    <div className="text-[10px] font-mono text-slate-300 mt-1">
+                                                                        {new Date(item.created_at).toLocaleString('uk-UA')}
+                                                                    </div>
                                                                 </div>
-                                                                {activeTab === 'users' && <div className="text-xs text-slate-400 mt-0.5">{item.email}</div>}
-                                                            </div>
-                                                        )}
-                                                    </td>
-
-                                                    <td className="p-5">
-                                                        {activeTab === 'applications' && (
-                                                            <span className={`px-2.5 py-1 rounded-lg text-xs font-bold uppercase border ${item.status === 'pending' ? 'bg-orange-50 text-orange-600 border-orange-100' :
-                                                                    item.status === 'approved' ? 'bg-emerald-50 text-emerald-600 border-emerald-100' :
-                                                                        'bg-red-50 text-red-600 border-red-100'
-                                                                }`}>
-                                                                {item.status}
-                                                            </span>
-                                                        )}
-                                                        {activeTab === 'foods' && (
-                                                            <div className="flex flex-wrap gap-2 text-xs font-bold">
-                                                                <span className="bg-orange-50 text-orange-600 px-2 py-1 rounded-md">{item.calories} ккал</span>
-                                                            </div>
-                                                        )}
-                                                        {activeTab === 'users' && (
-                                                            <div className="flex items-center gap-2">
-                                                                <span className={`px-2 py-1 rounded text-xs font-bold uppercase ${item.role === 'admin' ? 'bg-purple-100 text-purple-600' : 'bg-slate-100 text-slate-600'}`}>{item.role || 'customer'}</span>
-                                                                <span className={`px-2 py-1 rounded text-xs font-bold uppercase ${item.status === 'banned' ? 'bg-red-100 text-red-600' : 'bg-emerald-50 text-emerald-600'}`}>{item.status || 'Active'}</span>
-                                                            </div>
-                                                        )}
-                                                    </td>
-
-                                                    <td className="p-5 text-right">
-                                                        <div className="flex justify-end gap-2">
-                                                            {activeTab === 'applications' && item.status === 'pending' && (
-                                                                <>
-                                                                    <button onClick={() => handleApplication(item.id, item.user_id, 'approved')} className="p-2 bg-emerald-50 text-emerald-600 rounded-lg hover:bg-emerald-100" title="Схвалити"><Check size={16} /></button>
-                                                                    <button onClick={() => handleApplication(item.id, item.user_id, 'rejected')} className="p-2 bg-red-50 text-red-600 rounded-lg hover:bg-red-100" title="Відхилити"><XOctagon size={16} /></button>
-                                                                </>
+                                                            ) : (
+                                                                <div>
+                                                                    <div className="font-bold text-slate-700 text-base">
+                                                                        {activeTab === 'users' ? getUserDisplayName(item) : (item.name || 'Без назви')}
+                                                                    </div>
+                                                                    {activeTab === 'users' && <div className="text-xs text-slate-400 mt-0.5">{item.email}</div>}
+                                                                </div>
                                                             )}
+                                                        </td>
+
+                                                        <td className="p-5">
+                                                            {/* Статус заявки */}
+                                                            {activeTab === 'applications' && (
+                                                                <span className={`px-3 py-1.5 rounded-lg text-xs font-black uppercase tracking-wide border ${item.status === 'pending' ? 'bg-orange-50 text-orange-600 border-orange-200' :
+                                                                        item.status === 'approved' ? 'bg-emerald-50 text-emerald-600 border-emerald-200' :
+                                                                            'bg-red-50 text-red-600 border-red-200'
+                                                                    }`}>
+                                                                    {item.status === 'pending' ? 'Очікує' : item.status === 'approved' ? 'Схвалено' : 'Відхилено'}
+                                                                </span>
+                                                            )}
+
+                                                            {/* Калорії для їжі */}
+                                                            {activeTab === 'foods' && (
+                                                                <span className="bg-orange-50 text-orange-600 px-2 py-1 rounded-md text-xs font-bold border border-orange-100">{item.calories} ккал</span>
+                                                            )}
+
+                                                            {/* Роль для користувачів */}
                                                             {activeTab === 'users' && (
-                                                                <button onClick={() => handleViewUser(item)} className="p-2 bg-white border hover:bg-slate-50 rounded-lg text-slate-500"><Eye size={16} /></button>
+                                                                <div className="flex items-center gap-2">
+                                                                    <span className={`px-2 py-1 rounded text-xs font-bold uppercase ${item.role === 'admin' ? 'bg-purple-100 text-purple-600' : item.role === 'trainer' ? 'bg-indigo-100 text-indigo-600' : 'bg-slate-100 text-slate-600'}`}>{item.role || 'customer'}</span>
+                                                                    <span className={`px-2 py-1 rounded text-xs font-bold uppercase ${item.status === 'banned' ? 'bg-red-100 text-red-600' : 'bg-emerald-50 text-emerald-600'}`}>{item.status || 'Active'}</span>
+                                                                </div>
                                                             )}
-                                                            {(activeTab === 'foods' || activeTab === 'workouts') && (
-                                                                <button onClick={() => openModal(item)} className="p-2 bg-white border hover:bg-slate-50 rounded-lg text-slate-500"><Edit2 size={16} /></button>
-                                                            )}
-                                                            <button onClick={() => handleDelete(item.id || item.user_id)} className="p-2 bg-white border hover:text-red-600 rounded-lg text-slate-400"><Trash2 size={16} /></button>
-                                                        </div>
-                                                    </td>
-                                                </tr>
-                                            ))}
+                                                        </td>
+
+                                                        <td className="p-5 text-right">
+                                                            <div className="flex justify-end gap-2">
+                                                                {/* Кнопки для заявок */}
+                                                                {activeTab === 'applications' && item.status === 'pending' && (
+                                                                    <>
+                                                                        <button onClick={() => handleApplication(item.id, item.user_id, 'approved')} className="flex items-center gap-1 px-3 py-2 bg-emerald-500 hover:bg-emerald-600 text-white rounded-lg text-xs font-bold transition-all shadow-md shadow-emerald-200" title="Схвалити">
+                                                                            <Check size={14} /> Схвалити
+                                                                        </button>
+                                                                        <button onClick={() => handleApplication(item.id, item.user_id, 'rejected')} className="flex items-center gap-1 px-3 py-2 bg-white border border-red-200 text-red-600 hover:bg-red-50 rounded-lg text-xs font-bold transition-all" title="Відхилити">
+                                                                            <XOctagon size={14} /> Відхилити
+                                                                        </button>
+                                                                    </>
+                                                                )}
+
+                                                                {/* Кнопка перегляду профілю */}
+                                                                {activeTab === 'users' && (
+                                                                    <button onClick={() => handleViewUser(item)} className="p-2 bg-white border hover:border-blue-300 hover:text-blue-600 rounded-lg text-slate-400 transition-all"><Eye size={16} /></button>
+                                                                )}
+
+                                                                {/* Кнопка редагування */}
+                                                                {(activeTab === 'foods' || activeTab === 'workouts') && (
+                                                                    <button onClick={() => openModal(item)} className="p-2 bg-white border hover:border-blue-300 hover:text-blue-600 rounded-lg text-slate-400 transition-all"><Edit2 size={16} /></button>
+                                                                )}
+
+                                                                {/* Кнопка видалення */}
+                                                                <button onClick={() => handleDelete(item.id || item.user_id)} className="p-2 bg-white border hover:border-red-300 hover:text-red-600 rounded-lg text-slate-400 transition-all"><Trash2 size={16} /></button>
+                                                            </div>
+                                                        </td>
+                                                    </tr>
+                                                );
+                                            })}
                                         </tbody>
                                     </table>
                                 </div>
@@ -398,7 +494,7 @@ const AdminDashboard = ({ onLogout }) => {
                         <div className="space-y-4">
                             <div>
                                 <label className="text-sm font-bold text-slate-700">Назва</label>
-                                <input type="text" className="w-full p-3 bg-slate-50 rounded-xl border-transparent focus:border-blue-500 border-2 outline-none" value={formData.name || ''} onChange={e => setFormData({ ...formData, name: e.target.value })} />
+                                <input type="text" className="w-full p-3 bg-slate-50 rounded-xl border-2 border-transparent focus:border-blue-500 outline-none" value={formData.name || ''} onChange={e => setFormData({ ...formData, name: e.target.value })} />
                             </div>
                             {activeTab === 'foods' && (
                                 <div className="grid grid-cols-2 gap-4">
