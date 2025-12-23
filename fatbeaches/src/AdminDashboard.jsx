@@ -84,7 +84,7 @@ const AdminDashboard = ({ onLogout }) => {
         }
     };
 
-    // --- НОВА ФУНКЦІЯ: Перегляд деталей користувача (ВИПРАВЛЕНО) ---
+    // --- ФУНКЦІЯ: Перегляд деталей користувача ---
     const handleViewUser = async (user) => {
         setSelectedUser(user);
         setIsUserModalOpen(true);
@@ -92,15 +92,14 @@ const AdminDashboard = ({ onLogout }) => {
         setUserProfile(null);
 
         try {
-            // Робимо запит до user_profiles, щоб отримати ріст, вагу, вік
+            // Робимо запит до user_profiles
             const { data, error } = await supabase
                 .from('user_profiles')
                 .select('*')
                 .eq('user_id', user.user_id)
                 .single();
 
-            // ВИПРАВЛЕННЯ: Тепер ми використовуємо змінну error
-            if (error && error.code !== 'PGRST116') { // PGRST116 - це помилка "не знайдено", її ігноруємо
+            if (error && error.code !== 'PGRST116') {
                 throw error;
             }
 
@@ -320,7 +319,7 @@ const AdminDashboard = ({ onLogout }) => {
                 </div>
             )}
 
-            {/* --- НОВЕ МОДАЛЬНЕ ВІКНО: ІНФОРМАЦІЯ ПРО КОРИСТУВАЧА --- */}
+            {/* --- МОДАЛЬНЕ ВІКНО: ІНФОРМАЦІЯ ПРО КОРИСТУВАЧА --- */}
             {isUserModalOpen && selectedUser && (
                 <div className="fixed inset-0 bg-black/60 backdrop-blur-sm z-[60] flex items-center justify-center p-4">
                     <div className="bg-white w-full max-w-lg rounded-[2.5rem] p-8 shadow-2xl animate-fade-in relative overflow-hidden">
@@ -358,11 +357,13 @@ const AdminDashboard = ({ onLogout }) => {
                                     </div>
                                     <div className="bg-slate-50 p-4 rounded-2xl border border-slate-100">
                                         <p className="text-xs font-bold text-slate-400 uppercase">Зріст</p>
-                                        <p className="text-2xl font-black text-slate-800">{userProfile.height || '-'} <span className="text-sm text-slate-400 font-medium">см</span></p>
+                                        {/* ВИПРАВЛЕНО: height -> height_cm */}
+                                        <p className="text-2xl font-black text-slate-800">{userProfile.height_cm || '-'} <span className="text-sm text-slate-400 font-medium">см</span></p>
                                     </div>
                                     <div className="bg-slate-50 p-4 rounded-2xl border border-slate-100">
                                         <p className="text-xs font-bold text-slate-400 uppercase">Вага</p>
-                                        <p className="text-2xl font-black text-slate-800">{userProfile.weight || '-'} <span className="text-sm text-slate-400 font-medium">кг</span></p>
+                                        {/* ВИПРАВЛЕНО: weight -> weight_kg */}
+                                        <p className="text-2xl font-black text-slate-800">{userProfile.weight_kg || '-'} <span className="text-sm text-slate-400 font-medium">кг</span></p>
                                     </div>
 
                                     <div className="col-span-2 bg-slate-50 p-4 rounded-2xl border border-slate-100">
