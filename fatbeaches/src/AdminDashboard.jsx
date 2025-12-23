@@ -2,7 +2,7 @@
 import {
     Users, Utensils, Activity, Plus, Trash2, Save, X, Search,
     Eye, Edit2, CheckCircle, AlertCircle, ArrowUpDown,
-    LayoutDashboard, FileText, Check, XOctagon, Clock, Calendar
+    LayoutDashboard, FileText, Check, XOctagon, Calendar
 } from 'lucide-react';
 import { supabase } from './supabase';
 
@@ -18,7 +18,7 @@ const AdminDashboard = ({ onLogout }) => {
     // Статистика
     const [stats, setStats] = useState({ users: 0, foods: 0, workouts: 0, pendingTrainers: 0 });
 
-    // Фільтр для заявок (за замовчуванням показуємо тільки нові)
+    // Фільтр для заявок
     const [appFilter, setAppFilter] = useState('pending');
 
     // Модальні вікна
@@ -37,6 +37,7 @@ const AdminDashboard = ({ onLogout }) => {
     useEffect(() => {
         fetchData();
         if (activeTab === 'overview') fetchStats();
+        // eslint-disable-next-line react-hooks/exhaustive-deps
     }, [activeTab, appFilter]);
 
     // --- ОТРИМАННЯ СТАТИСТИКИ ---
@@ -84,7 +85,11 @@ const AdminDashboard = ({ onLogout }) => {
                 data = workouts;
             }
             else if (activeTab === 'applications') {
-                let query = supabase.from('trainer_applications').select('*').order('submitted_at', { ascending: false });
+                // 1. Завантажуємо заявки (використовуємо submitted_at)
+                let query = supabase
+                    .from('trainer_applications')
+                    .select('*')
+                    .order('submitted_at', { ascending: false });
 
                 if (appFilter !== 'all') {
                     query = query.eq('status', appFilter);
@@ -93,8 +98,11 @@ const AdminDashboard = ({ onLogout }) => {
                 const { data: apps, error: appError } = await query;
                 if (appError) throw appError;
 
-                // Завантажуємо дані користувачів для заявок
-                const { data: users, error: userError } = await supabase.from('users').select('user_id, email, name, first_name, last_name');
+                // 2. Завантажуємо користувачів для мапінгу імен
+                const { data: users, error: userError } = await supabase
+                    .from('users')
+                    .select('user_id, email, name, first_name, last_name');
+
                 if (!userError && users) {
                     const lookup = {};
                     users.forEach(u => lookup[u.user_id] = u);
@@ -125,25 +133,24 @@ const AdminDashboard = ({ onLogout }) => {
 
             if (appError) throw appError;
 
-            // 2. Якщо схвалюємо - даємо роль тренера
+            // 2. Якщо схвалено - змінюємо роль
             if (action === 'approved') {
                 const { error: userError } = await supabase
                     .from('users')
                     .update({ role: 'trainer' })
                     .eq('user_id', userId);
 
-                if (userError) alert('Помилка зміни ролі: ' + userError.message);
+                if (userError) alert('Увага: Заявку схвалено, але роль змінити не вдалося: ' + userError.message);
             }
 
-            alert(`Заявку успішно оброблено (${action})!`);
-
-            // Видаляємо зі списку (якщо дивимось "В очікуванні") або оновлюємо дані
+            // Оновлюємо UI без перезавантаження
             if (appFilter === 'pending') {
-                setItems(items.filter(item => item.id !== appId));
+                setItems(prev => prev.filter(item => item.id !== appId));
             } else {
                 fetchData();
             }
             fetchStats();
+            alert(`Успішно! Заявка оброблена.`);
         } catch (error) {
             alert('Помилка: ' + error.message);
         }
@@ -164,9 +171,14 @@ const AdminDashboard = ({ onLogout }) => {
                 let aValue = a[sortConfig.key] || '';
                 let bValue = b[sortConfig.key] || '';
 
+                // Спеціальна логіка для імен
                 if ((activeTab === 'users' || activeTab === 'applications') && sortConfig.key === 'name') {
-                    aValue = activeTab === 'users' ? getUserDisplayName(a) : getUserDisplayName(usersLookup[a.user_id]);
-                    bValue = activeTab === 'users' ? getUserDisplayName(b) : getUserDisplayName(usersLookup[b.user_id]);
+                    aValue = activeTab === 'users'
+                        ? getUserDisplayName(a)
+                        : getUserDisplayName(usersLookup[a.user_id]);
+                    bValue = activeTab === 'users'
+                        ? getUserDisplayName(b)
+                        : getUserDisplayName(usersLookup[b.user_id]);
                 }
 
                 if (aValue < bValue) return sortConfig.direction === 'asc' ? -1 : 1;
@@ -177,7 +189,7 @@ const AdminDashboard = ({ onLogout }) => {
         return sortableItems;
     }, [items, sortConfig, activeTab, usersLookup]);
 
-    // --- CRUD ---
+    // --- CRUD ОПЕРАЦІЇ ---
     const handleDelete = async (id) => {
         if (!window.confirm('Видалити цей запис назавжди?')) return;
         try {
@@ -188,15 +200,17 @@ const AdminDashboard = ({ onLogout }) => {
             const idColumn = activeTab === 'users' ? 'user_id' : 'id';
             const { error } = await supabase.from(table).delete().eq(idColumn, id);
             if (error) throw error;
-            setItems(items.filter(item => item[idColumn] !== id));
+            setItems(items.filter(item => (item[idColumn] || item.id) !== id));
         } catch (error) { alert(error.message); }
     };
 
     const handleSaveItem = async () => {
         try {
             const table = activeTab === 'foods' ? 'food_items' : 'workout_items';
-            if (activeTab === 'foods' && (!formData.name || !formData.calories)) { alert('Заповніть поля'); return; }
-            if (activeTab === 'workouts' && !formData.name) { alert('Заповніть назву'); return; }
+
+            // Валідація
+            if (activeTab === 'foods' && !formData.name) { alert('Введіть назву'); return; }
+            if (activeTab === 'workouts' && !formData.name) { alert('Введіть назву'); return; }
 
             let result;
             if (editingItem) {
@@ -206,10 +220,12 @@ const AdminDashboard = ({ onLogout }) => {
             }
 
             if (result.error) throw result.error;
+
+            const savedItem = result.data[0];
             if (editingItem) {
-                setItems(items.map(i => i.id === editingItem.id ? result.data[0] : i));
+                setItems(items.map(i => i.id === editingItem.id ? savedItem : i));
             } else {
-                setItems([...items, result.data[0]]);
+                setItems([...items, savedItem]);
             }
             setIsModalOpen(false);
             fetchStats();
@@ -222,7 +238,7 @@ const AdminDashboard = ({ onLogout }) => {
         setIsModalOpen(true);
     };
 
-    // --- USER PROFILE ---
+    // --- ПРОФІЛЬ КОРИСТУВАЧА ---
     const handleViewUser = async (user) => {
         setSelectedUser(user);
         setUserRole(user.role || 'customer');
@@ -251,7 +267,7 @@ const AdminDashboard = ({ onLogout }) => {
     };
 
     function getUserDisplayName(user) {
-        if (!user) return 'Невідомий';
+        if (!user) return 'Користувач (ID...)';
         if (user.name) return user.name;
         if (user.first_name && user.last_name) return `${user.first_name} ${user.last_name}`;
         if (user.full_name) return user.full_name;
@@ -371,7 +387,7 @@ const AdminDashboard = ({ onLogout }) => {
                                                 return (
                                                     <tr key={item.id || item.user_id} className="hover:bg-slate-50/80 transition-colors group">
 
-                                                        {/* КОЛОНКА 1: ІМ'Я / НАЗВА */}
+                                                        {/* COL 1: Name / Date */}
                                                         <td className="p-5 align-top w-1/4">
                                                             {activeTab === 'applications' ? (
                                                                 <div>
@@ -379,10 +395,11 @@ const AdminDashboard = ({ onLogout }) => {
                                                                         {applicant ? getUserDisplayName(applicant) : 'Завантаження...'}
                                                                     </div>
                                                                     <div className="text-xs text-slate-400 mt-1">
-                                                                        {applicant?.email || `UID: ${item.user_id.substring(0, 8)}...`}
+                                                                        {applicant?.email || `UID: ${item.user_id?.substring(0, 8)}...`}
                                                                     </div>
                                                                     <div className="flex items-center gap-1 text-[10px] font-mono text-slate-400 mt-2 bg-slate-50 w-fit px-2 py-1 rounded">
                                                                         <Calendar size={10} />
+                                                                        {/* Використовуємо submitted_at з БД */}
                                                                         {new Date(item.submitted_at || item.created_at).toLocaleDateString('uk-UA')}
                                                                     </div>
                                                                 </div>
@@ -396,12 +413,11 @@ const AdminDashboard = ({ onLogout }) => {
                                                             )}
                                                         </td>
 
-                                                        {/* КОЛОНКА 2: ДЕТАЛІ (ТЕКСТ ЗАЯВКИ, КАЛОРІЇ, РОЛІ) */}
+                                                        {/* COL 2: Details */}
                                                         <td className="p-5 align-top">
                                                             {activeTab === 'applications' && (
                                                                 <div className="space-y-3">
                                                                     <div className="bg-slate-50 p-4 rounded-xl border border-slate-100 text-sm text-slate-600 italic leading-relaxed relative">
-                                                                        <span className="absolute top-2 left-2 text-slate-200 text-4xl leading-none">“</span>
                                                                         <span className="relative z-10">{item.credentials_details || 'Текст заявки відсутній'}</span>
                                                                     </div>
                                                                     <div>
@@ -418,9 +434,18 @@ const AdminDashboard = ({ onLogout }) => {
                                                             {activeTab === 'foods' && (
                                                                 <div className="flex flex-wrap gap-2 text-xs font-bold">
                                                                     <span className="bg-orange-50 text-orange-600 px-2 py-1 rounded-md border border-orange-100">{item.calories} ккал</span>
+                                                                    {/* Поля з БД: proteins, fats, carbohydrates */}
                                                                     {item.proteins > 0 && <span className="bg-blue-50 text-blue-600 px-2 py-1 rounded-md">Б: {item.proteins}</span>}
                                                                     {item.fats > 0 && <span className="bg-yellow-50 text-yellow-600 px-2 py-1 rounded-md">Ж: {item.fats}</span>}
                                                                     {item.carbohydrates > 0 && <span className="bg-emerald-50 text-emerald-600 px-2 py-1 rounded-md">В: {item.carbohydrates}</span>}
+                                                                </div>
+                                                            )}
+
+                                                            {activeTab === 'workouts' && (
+                                                                <div className="flex flex-wrap gap-2 text-xs font-bold">
+                                                                    <span className="bg-purple-50 text-purple-600 px-2 py-1 rounded-md border border-purple-100">
+                                                                        {item.calories} ккал/год
+                                                                    </span>
                                                                 </div>
                                                             )}
 
@@ -432,9 +457,10 @@ const AdminDashboard = ({ onLogout }) => {
                                                             )}
                                                         </td>
 
-                                                        {/* КОЛОНКА 3: ДІЇ */}
+                                                        {/* COL 3: Actions */}
                                                         <td className="p-5 text-right align-top">
                                                             <div className="flex justify-end gap-2">
+                                                                {/* Кнопки заявок */}
                                                                 {activeTab === 'applications' && item.status === 'pending' && (
                                                                     <div className="flex flex-col gap-2">
                                                                         <button onClick={() => handleApplication(item.id, item.user_id, 'approved')} className="flex items-center justify-center gap-2 px-4 py-2 bg-emerald-500 hover:bg-emerald-600 text-white rounded-xl text-xs font-bold transition-all shadow-md shadow-emerald-200 w-32">
@@ -486,6 +512,8 @@ const AdminDashboard = ({ onLogout }) => {
                                 <label className="text-sm font-bold text-slate-700">Назва</label>
                                 <input type="text" className="w-full p-3 bg-slate-50 rounded-xl border-2 border-transparent focus:border-blue-500 outline-none" value={formData.name || ''} onChange={e => setFormData({ ...formData, name: e.target.value })} />
                             </div>
+
+                            {/* Поля для ПРОДУКТІВ (за вашими скріншотами) */}
                             {activeTab === 'foods' && (
                                 <div className="grid grid-cols-2 gap-4">
                                     <div><label className="text-xs font-bold text-slate-500">Калорії</label><input type="number" className="w-full p-3 bg-slate-50 rounded-xl outline-none" value={formData.calories || ''} onChange={e => setFormData({ ...formData, calories: e.target.value })} /></div>
@@ -494,6 +522,23 @@ const AdminDashboard = ({ onLogout }) => {
                                     <div><label className="text-xs font-bold text-slate-500">Вуглеводи</label><input type="number" className="w-full p-3 bg-slate-50 rounded-xl outline-none" value={formData.carbohydrates || ''} onChange={e => setFormData({ ...formData, carbohydrates: e.target.value })} /></div>
                                 </div>
                             )}
+
+                            {/* НОВЕ: Поля для ВПРАВ (Калорії) */}
+                            {activeTab === 'workouts' && (
+                                <div>
+                                    <label className="text-xs font-bold text-slate-500">Калорії (за годину)</label>
+                                    <input
+                                        type="number"
+                                        className="w-full p-3 bg-slate-50 rounded-xl outline-none"
+                                        placeholder="Наприклад: 500"
+                                        // Припускаю, що колонка називається 'calories'. 
+                                        // Якщо у вашій БД вона 'calories_burned' або 'intensity', змініть слово 'calories' тут внизу:
+                                        value={formData.calories_burned_estimated || ''}
+                                        onChange={e => setFormData({ ...formData, calories_burned_estimated: e.target.value })}
+                                    />
+                                </div>
+                            )}
+
                             <button onClick={handleSaveItem} className="w-full bg-blue-600 text-white font-bold py-3 rounded-xl mt-4 flex justify-center gap-2"><Save size={20} /> Зберегти</button>
                         </div>
                     </div>
