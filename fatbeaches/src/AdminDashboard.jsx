@@ -2,7 +2,7 @@
 import {
     Users, Utensils, Activity, Plus, Trash2, Save, X, Search,
     Eye, Edit2, CheckCircle, AlertCircle, ArrowUpDown,
-    LayoutDashboard, FileText, Check, XOctagon, Filter
+    LayoutDashboard, FileText, Check, XOctagon, Clock, Calendar
 } from 'lucide-react';
 import { supabase } from './supabase';
 
@@ -18,7 +18,7 @@ const AdminDashboard = ({ onLogout }) => {
     // Статистика
     const [stats, setStats] = useState({ users: 0, foods: 0, workouts: 0, pendingTrainers: 0 });
 
-    // Фільтр для заявок
+    // Фільтр для заявок (за замовчуванням показуємо тільки нові)
     const [appFilter, setAppFilter] = useState('pending');
 
     // Модальні вікна
@@ -84,12 +84,16 @@ const AdminDashboard = ({ onLogout }) => {
                 data = workouts;
             }
             else if (activeTab === 'applications') {
-                let query = supabase.from('trainer_applications').select('*').order('created_at', { ascending: false });
-                if (appFilter !== 'all') query = query.eq('status', appFilter);
+                let query = supabase.from('trainer_applications').select('*').order('submitted_at', { ascending: false });
+
+                if (appFilter !== 'all') {
+                    query = query.eq('status', appFilter);
+                }
 
                 const { data: apps, error: appError } = await query;
                 if (appError) throw appError;
 
+                // Завантажуємо дані користувачів для заявок
                 const { data: users, error: userError } = await supabase.from('users').select('user_id, email, name, first_name, last_name');
                 if (!userError && users) {
                     const lookup = {};
@@ -109,19 +113,31 @@ const AdminDashboard = ({ onLogout }) => {
 
     // --- ЛОГІКА ЗАЯВОК ---
     const handleApplication = async (appId, userId, action) => {
-        const actionText = action === 'approved' ? 'схвалити' : 'відхилити';
+        const actionText = action === 'approved' ? 'СХВАЛИТИ' : 'ВІДХИЛИТИ';
         if (!window.confirm(`Ви впевнені, що хочете ${actionText} цю заявку?`)) return;
 
         try {
-            const { error: appError } = await supabase.from('trainer_applications').update({ status: action }).eq('id', appId);
+            // 1. Оновлюємо статус заявки
+            const { error: appError } = await supabase
+                .from('trainer_applications')
+                .update({ status: action })
+                .eq('id', appId);
+
             if (appError) throw appError;
 
+            // 2. Якщо схвалюємо - даємо роль тренера
             if (action === 'approved') {
-                const { error: userError } = await supabase.from('users').update({ role: 'trainer' }).eq('user_id', userId);
-                if (userError) alert('Помилка оновлення ролі: ' + userError.message);
+                const { error: userError } = await supabase
+                    .from('users')
+                    .update({ role: 'trainer' })
+                    .eq('user_id', userId);
+
+                if (userError) alert('Помилка зміни ролі: ' + userError.message);
             }
 
-            alert(`Заявка ${action === 'approved' ? 'схвалена' : 'відхилена'}.`);
+            alert(`Заявку успішно оброблено (${action})!`);
+
+            // Видаляємо зі списку (якщо дивимось "В очікуванні") або оновлюємо дані
             if (appFilter === 'pending') {
                 setItems(items.filter(item => item.id !== appId));
             } else {
@@ -163,7 +179,7 @@ const AdminDashboard = ({ onLogout }) => {
 
     // --- CRUD ---
     const handleDelete = async (id) => {
-        if (!window.confirm('Видалити цей запис?')) return;
+        if (!window.confirm('Видалити цей запис назавжди?')) return;
         try {
             const table = activeTab === 'foods' ? 'food_items' :
                 activeTab === 'workouts' ? 'workout_items' :
@@ -298,7 +314,7 @@ const AdminDashboard = ({ onLogout }) => {
                     </div>
                 )}
 
-                {/* TABLES */}
+                {/* LIST TABLES */}
                 {activeTab !== 'overview' && (
                     <div className="animate-fade-in space-y-6">
                         <div className="flex flex-col md:flex-row gap-4 justify-between items-center">
@@ -342,7 +358,9 @@ const AdminDashboard = ({ onLogout }) => {
                                                         <ArrowUpDown size={12} className="opacity-0 group-hover:opacity-100" />
                                                     </div>
                                                 </th>
-                                                <th className="p-5 text-xs font-black text-slate-400 uppercase">Деталі / Статус</th>
+                                                <th className="p-5 text-xs font-black text-slate-400 uppercase">
+                                                    {activeTab === 'applications' ? 'Текст заявки / Статус' : 'Деталі / Статус'}
+                                                </th>
                                                 <th className="p-5 text-right text-xs font-black text-slate-400 uppercase">Дії</th>
                                             </tr>
                                         </thead>
@@ -352,17 +370,20 @@ const AdminDashboard = ({ onLogout }) => {
 
                                                 return (
                                                     <tr key={item.id || item.user_id} className="hover:bg-slate-50/80 transition-colors group">
-                                                        <td className="p-5">
+
+                                                        {/* КОЛОНКА 1: ІМ'Я / НАЗВА */}
+                                                        <td className="p-5 align-top w-1/4">
                                                             {activeTab === 'applications' ? (
                                                                 <div>
                                                                     <div className="font-bold text-slate-700 text-base">
-                                                                        {applicant ? getUserDisplayName(applicant) : 'Невідомий користувач'}
+                                                                        {applicant ? getUserDisplayName(applicant) : 'Завантаження...'}
                                                                     </div>
                                                                     <div className="text-xs text-slate-400 mt-1">
-                                                                        {applicant?.email || `ID: ${item.user_id.substring(0, 8)}`}
+                                                                        {applicant?.email || `UID: ${item.user_id.substring(0, 8)}...`}
                                                                     </div>
-                                                                    <div className="text-[10px] font-mono text-slate-300 mt-1">
-                                                                        {new Date(item.created_at).toLocaleString('uk-UA')}
+                                                                    <div className="flex items-center gap-1 text-[10px] font-mono text-slate-400 mt-2 bg-slate-50 w-fit px-2 py-1 rounded">
+                                                                        <Calendar size={10} />
+                                                                        {new Date(item.submitted_at || item.created_at).toLocaleDateString('uk-UA')}
                                                                     </div>
                                                                 </div>
                                                             ) : (
@@ -375,50 +396,64 @@ const AdminDashboard = ({ onLogout }) => {
                                                             )}
                                                         </td>
 
-                                                        <td className="p-5">
+                                                        {/* КОЛОНКА 2: ДЕТАЛІ (ТЕКСТ ЗАЯВКИ, КАЛОРІЇ, РОЛІ) */}
+                                                        <td className="p-5 align-top">
                                                             {activeTab === 'applications' && (
-                                                                <span className={`px-3 py-1.5 rounded-lg text-xs font-black uppercase tracking-wide border ${item.status === 'pending' ? 'bg-orange-50 text-orange-600 border-orange-200' :
-                                                                        item.status === 'approved' ? 'bg-emerald-50 text-emerald-600 border-emerald-200' :
-                                                                            'bg-red-50 text-red-600 border-red-200'
-                                                                    }`}>
-                                                                    {item.status === 'pending' ? 'Очікує' : item.status === 'approved' ? 'Схвалено' : 'Відхилено'}
-                                                                </span>
+                                                                <div className="space-y-3">
+                                                                    <div className="bg-slate-50 p-4 rounded-xl border border-slate-100 text-sm text-slate-600 italic leading-relaxed relative">
+                                                                        <span className="absolute top-2 left-2 text-slate-200 text-4xl leading-none">“</span>
+                                                                        <span className="relative z-10">{item.credentials_details || 'Текст заявки відсутній'}</span>
+                                                                    </div>
+                                                                    <div>
+                                                                        <span className={`px-3 py-1 rounded-full text-[10px] font-black uppercase tracking-wide border ${item.status === 'pending' ? 'bg-orange-50 text-orange-600 border-orange-200' :
+                                                                                item.status === 'approved' ? 'bg-emerald-50 text-emerald-600 border-emerald-200' :
+                                                                                    'bg-red-50 text-red-600 border-red-200'
+                                                                            }`}>
+                                                                            {item.status === 'pending' ? 'Очікує розгляду' : item.status === 'approved' ? 'Схвалено' : 'Відхилено'}
+                                                                        </span>
+                                                                    </div>
+                                                                </div>
                                                             )}
+
                                                             {activeTab === 'foods' && (
                                                                 <div className="flex flex-wrap gap-2 text-xs font-bold">
-                                                                    <span className="bg-orange-50 text-orange-600 px-2 py-1 rounded-md">{item.calories} ккал</span>
-                                                                    {/* ВИПРАВЛЕНО: відображення з правильних колонок */}
+                                                                    <span className="bg-orange-50 text-orange-600 px-2 py-1 rounded-md border border-orange-100">{item.calories} ккал</span>
                                                                     {item.proteins > 0 && <span className="bg-blue-50 text-blue-600 px-2 py-1 rounded-md">Б: {item.proteins}</span>}
                                                                     {item.fats > 0 && <span className="bg-yellow-50 text-yellow-600 px-2 py-1 rounded-md">Ж: {item.fats}</span>}
                                                                     {item.carbohydrates > 0 && <span className="bg-emerald-50 text-emerald-600 px-2 py-1 rounded-md">В: {item.carbohydrates}</span>}
                                                                 </div>
                                                             )}
+
                                                             {activeTab === 'users' && (
                                                                 <div className="flex items-center gap-2">
-                                                                    <span className={`px-2 py-1 rounded text-xs font-bold uppercase ${item.role === 'admin' ? 'bg-purple-100 text-purple-600' : 'bg-slate-100 text-slate-600'}`}>{item.role || 'customer'}</span>
+                                                                    <span className={`px-2 py-1 rounded text-xs font-bold uppercase ${item.role === 'admin' ? 'bg-purple-100 text-purple-600' : item.role === 'trainer' ? 'bg-indigo-100 text-indigo-600' : 'bg-slate-100 text-slate-600'}`}>{item.role || 'customer'}</span>
                                                                     <span className={`px-2 py-1 rounded text-xs font-bold uppercase ${item.status === 'banned' ? 'bg-red-100 text-red-600' : 'bg-emerald-50 text-emerald-600'}`}>{item.status || 'Active'}</span>
                                                                 </div>
                                                             )}
                                                         </td>
 
-                                                        <td className="p-5 text-right">
+                                                        {/* КОЛОНКА 3: ДІЇ */}
+                                                        <td className="p-5 text-right align-top">
                                                             <div className="flex justify-end gap-2">
                                                                 {activeTab === 'applications' && item.status === 'pending' && (
-                                                                    <>
-                                                                        <button onClick={() => handleApplication(item.id, item.user_id, 'approved')} className="flex items-center gap-1 px-3 py-2 bg-emerald-500 hover:bg-emerald-600 text-white rounded-lg text-xs font-bold transition-all shadow-md shadow-emerald-200">
-                                                                            <Check size={14} /> Схвалити
+                                                                    <div className="flex flex-col gap-2">
+                                                                        <button onClick={() => handleApplication(item.id, item.user_id, 'approved')} className="flex items-center justify-center gap-2 px-4 py-2 bg-emerald-500 hover:bg-emerald-600 text-white rounded-xl text-xs font-bold transition-all shadow-md shadow-emerald-200 w-32">
+                                                                            <Check size={14} /> СХВАЛИТИ
                                                                         </button>
-                                                                        <button onClick={() => handleApplication(item.id, item.user_id, 'rejected')} className="flex items-center gap-1 px-3 py-2 bg-white border border-red-200 text-red-600 hover:bg-red-50 rounded-lg text-xs font-bold transition-all">
-                                                                            <XOctagon size={14} /> Відхилити
+                                                                        <button onClick={() => handleApplication(item.id, item.user_id, 'rejected')} className="flex items-center justify-center gap-2 px-4 py-2 bg-white border border-red-200 text-red-600 hover:bg-red-50 rounded-xl text-xs font-bold transition-all w-32">
+                                                                            <XOctagon size={14} /> ВІДХИЛИТИ
                                                                         </button>
-                                                                    </>
+                                                                    </div>
                                                                 )}
+
                                                                 {activeTab === 'users' && (
                                                                     <button onClick={() => handleViewUser(item)} className="p-2 bg-white border hover:border-blue-300 hover:text-blue-600 rounded-lg text-slate-400 transition-all"><Eye size={16} /></button>
                                                                 )}
+
                                                                 {(activeTab === 'foods' || activeTab === 'workouts') && (
                                                                     <button onClick={() => openModal(item)} className="p-2 bg-white border hover:border-blue-300 hover:text-blue-600 rounded-lg text-slate-400 transition-all"><Edit2 size={16} /></button>
                                                                 )}
+
                                                                 <button onClick={() => handleDelete(item.id || item.user_id)} className="p-2 bg-white border hover:border-red-300 hover:text-red-600 rounded-lg text-slate-400 transition-all"><Trash2 size={16} /></button>
                                                             </div>
                                                         </td>
@@ -454,7 +489,6 @@ const AdminDashboard = ({ onLogout }) => {
                             {activeTab === 'foods' && (
                                 <div className="grid grid-cols-2 gap-4">
                                     <div><label className="text-xs font-bold text-slate-500">Калорії</label><input type="number" className="w-full p-3 bg-slate-50 rounded-xl outline-none" value={formData.calories || ''} onChange={e => setFormData({ ...formData, calories: e.target.value })} /></div>
-                                    {/* ВИПРАВЛЕНО: proteins, fats, carbohydrates замість protein, fat, carbs */}
                                     <div><label className="text-xs font-bold text-slate-500">Білки</label><input type="number" className="w-full p-3 bg-slate-50 rounded-xl outline-none" value={formData.proteins || ''} onChange={e => setFormData({ ...formData, proteins: e.target.value })} /></div>
                                     <div><label className="text-xs font-bold text-slate-500">Жири</label><input type="number" className="w-full p-3 bg-slate-50 rounded-xl outline-none" value={formData.fats || ''} onChange={e => setFormData({ ...formData, fats: e.target.value })} /></div>
                                     <div><label className="text-xs font-bold text-slate-500">Вуглеводи</label><input type="number" className="w-full p-3 bg-slate-50 rounded-xl outline-none" value={formData.carbohydrates || ''} onChange={e => setFormData({ ...formData, carbohydrates: e.target.value })} /></div>
