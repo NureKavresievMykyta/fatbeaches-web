@@ -1,15 +1,16 @@
 ﻿import React, { useState, useEffect } from 'react';
 import {
     Users, Utensils, Activity, Plus, Trash2, Save, X, Search,
-    Eye, Edit2, CheckCircle, AlertCircle, ArrowUpDown,
-    LayoutDashboard, FileText, Check, XOctagon, Calendar
+    Eye, Edit2, Check, XOctagon, Calendar,
+    LayoutDashboard, FileText, ArrowUpDown
 } from 'lucide-react';
 import { supabase } from './supabase';
 
 const AdminDashboard = ({ onLogout }) => {
-    // --- ОСНОВНІ СТАНИ ---
+    // --- ОСНОВНЫЕ СОСТОЯНИЯ ---
     const [activeTab, setActiveTab] = useState('overview');
     const [items, setItems] = useState([]);
+    const [dashboardDishes, setDashboardDishes] = useState([]); // Отдельное состояние для визуала на главной
     const [usersLookup, setUsersLookup] = useState({});
     const [loading, setLoading] = useState(true);
     const [searchTerm, setSearchTerm] = useState('');
@@ -18,10 +19,10 @@ const AdminDashboard = ({ onLogout }) => {
     // Статистика
     const [stats, setStats] = useState({ users: 0, foods: 0, workouts: 0, pendingTrainers: 0 });
 
-    // Фільтр для заявок
+    // Фильтр для заявок
     const [appFilter, setAppFilter] = useState('pending');
 
-    // Модальні вікна
+    // Модальные окна
     const [isModalOpen, setIsModalOpen] = useState(false);
     const [editingItem, setEditingItem] = useState(null);
     const [formData, setFormData] = useState({});
@@ -34,20 +35,29 @@ const AdminDashboard = ({ onLogout }) => {
     const [userRole, setUserRole] = useState('');
     const [userStatus, setUserStatus] = useState('');
 
-    // --- ЕФЕКТ ЗАВАНТАЖЕННЯ ---
+    // Картинки-заглушки для визуала (если в БД нет картинок)
+    const foodImages = [
+        'https://images.unsplash.com/photo-1546069901-ba9599a7e63c?auto=format&fit=crop&w=800&q=80',
+        'https://images.unsplash.com/photo-1550304943-4f24f54ddde9?auto=format&fit=crop&w=800&q=80',
+        'https://images.unsplash.com/photo-1612874742237-982e9657dd18?auto=format&fit=crop&w=800&q=80',
+        'https://images.unsplash.com/photo-1519708227418-c8fd9a32b7a2?auto=format&fit=crop&w=800&q=80'
+    ];
+
+    // --- ЭФФЕКТ ЗАГРУЗКИ ---
     useEffect(() => {
-        // 1. ОЧИЩЕННЯ: Скидаємо items, щоб уникнути конфлікту даних при зміні вкладки (FIX білого екрану)
-        setItems([]);
-        setUsersLookup({});
-
-        // 2. Завантаження нових даних
-        fetchData();
-
-        if (activeTab === 'overview') fetchStats();
+        // Очищаем список при смене вкладок (кроме items, dashboardDishes грузится отдельно)
+        if (activeTab !== 'overview') {
+            setItems([]);
+            setUsersLookup({});
+            fetchData();
+        } else {
+            fetchStats();
+            fetchDashboardData();
+        }
         // eslint-disable-next-line react-hooks/exhaustive-deps
     }, [activeTab, appFilter]);
 
-    // --- ОТРИМАННЯ СТАТИСТИКИ ---
+    // --- ПОЛУЧЕНИЕ СТАТИСТИКИ ---
     const fetchStats = async () => {
         try {
             const [users, foods, workouts, apps] = await Promise.all([
@@ -68,10 +78,36 @@ const AdminDashboard = ({ onLogout }) => {
         }
     };
 
-    // --- ОТРИМАННЯ ДАНИХ ---
-    const fetchData = async () => {
-        if (activeTab === 'overview') return;
+    // --- ЗАГРУЗКА ДАННЫХ ДЛЯ ГЛАВНОГО ЭКРАНА ---
+    const fetchDashboardData = async () => {
+        try {
+            // Берем последние 4 добавленных блюда
+            const { data, error } = await supabase
+                .from('food_items')
+                .select('*')
+                .order('created_at', { ascending: false }) // Предполагаем, что есть created_at, или просто limit
+                .limit(4);
 
+            if (error) throw error;
+
+            // Если база пустая, создадим фейковые данные для красивого отображения
+            if (!data || data.length === 0) {
+                setDashboardDishes([
+                    { id: 1, name: 'Демо: Стейк лосося', calories: 320, proteins: 25, fats: 15, carbohydrates: 5 },
+                    { id: 2, name: 'Демо: Боул з кіноа', calories: 380, proteins: 12, fats: 10, carbohydrates: 45 },
+                    { id: 3, name: 'Демо: Салат Цезар', calories: 450, proteins: 20, fats: 20, carbohydrates: 15 },
+                    { id: 4, name: 'Демо: Паста', calories: 550, proteins: 18, fats: 12, carbohydrates: 60 },
+                ]);
+            } else {
+                setDashboardDishes(data);
+            }
+        } catch (error) {
+            console.error("Error fetching dashboard dishes:", error);
+        }
+    };
+
+    // --- ПОЛУЧЕНИЕ СПИСКОВ (ТАБЛИЦЫ) ---
+    const fetchData = async () => {
         setLoading(true);
         try {
             let data = [];
@@ -92,7 +128,7 @@ const AdminDashboard = ({ onLogout }) => {
                 data = workouts;
             }
             else if (activeTab === 'applications') {
-                // 1. Завантажуємо заявки
+                // 1. Загружаем заявки
                 let query = supabase
                     .from('trainer_applications')
                     .select('*')
@@ -105,7 +141,7 @@ const AdminDashboard = ({ onLogout }) => {
                 const { data: apps, error: appError } = await query;
                 if (appError) throw appError;
 
-                // 2. Завантажуємо імена користувачів
+                // 2. Загружаем имена
                 const { data: users, error: userError } = await supabase
                     .from('users')
                     .select('user_id, email, name, first_name, last_name');
@@ -126,13 +162,12 @@ const AdminDashboard = ({ onLogout }) => {
         }
     };
 
-    // --- ЛОГІКА ЗАЯВОК ---
+    // --- ЛОГИКА ЗАЯВОК ---
     const handleApplication = async (appId, userId, action) => {
         const actionText = action === 'approved' ? 'СХВАЛИТИ' : 'ВІДХИЛИТИ';
         if (!window.confirm(`Ви впевнені, що хочете ${actionText} цю заявку?`)) return;
 
         try {
-            // Оновлюємо статус
             const { error: appError } = await supabase
                 .from('trainer_applications')
                 .update({ status: action })
@@ -140,7 +175,6 @@ const AdminDashboard = ({ onLogout }) => {
 
             if (appError) throw appError;
 
-            // Якщо схвалено - даємо роль тренера
             if (action === 'approved') {
                 const { error: userError } = await supabase
                     .from('users')
@@ -150,20 +184,20 @@ const AdminDashboard = ({ onLogout }) => {
                 if (userError) alert('Увага: Заявку схвалено, але роль змінити не вдалося.');
             }
 
-            // Оновлюємо інтерфейс
+            // Обновляем локально без перезагрузки
             if (appFilter === 'pending') {
                 setItems(prev => prev.filter(item => item.id !== appId));
             } else {
                 fetchData();
             }
             fetchStats();
-            alert(`Заявка успішно ${action === 'approved' ? 'схвалена' : 'відхилена'}.`);
+            alert(`Успішно! Заявка ${action === 'approved' ? 'схвалена' : 'відхилена'}.`);
         } catch (error) {
             alert('Помилка: ' + error.message);
         }
     };
 
-    // --- СОРТУВАННЯ ---
+    // --- СОРТИРОВКА ---
     const handleSort = (key) => {
         let direction = 'asc';
         if (sortConfig.key === key && sortConfig.direction === 'asc') direction = 'desc';
@@ -207,6 +241,7 @@ const AdminDashboard = ({ onLogout }) => {
             const { error } = await supabase.from(table).delete().eq(idColumn, id);
             if (error) throw error;
             setItems(items.filter(item => (item[idColumn] || item.id) !== id));
+            if (activeTab === 'foods') fetchDashboardData(); // Обновить дашборд если удалили еду
         } catch (error) { alert(error.message); }
     };
 
@@ -234,6 +269,7 @@ const AdminDashboard = ({ onLogout }) => {
             }
             setIsModalOpen(false);
             fetchStats();
+            if (activeTab === 'foods') fetchDashboardData(); // Обновить дашборд
         } catch (error) { alert(error.message); }
     };
 
@@ -243,7 +279,7 @@ const AdminDashboard = ({ onLogout }) => {
         setIsModalOpen(true);
     };
 
-    // --- ПРОФІЛЬ КОРИСТУВАЧА ---
+    // --- ПРОФИЛЬ ПОЛЬЗОВАТЕЛЯ ---
     const handleViewUser = async (user) => {
         setSelectedUser(user);
         setUserRole(user.role || 'customer');
@@ -285,7 +321,6 @@ const AdminDashboard = ({ onLogout }) => {
         let searchString = '';
 
         if (activeTab === 'applications') {
-            // FIX: Перевіряємо наявність user_id перед пошуком
             if (!item.user_id) return false;
             const user = usersLookup[item.user_id];
             searchString = (user ? getUserDisplayName(user) + user.email : item.user_id).toLowerCase();
@@ -324,20 +359,84 @@ const AdminDashboard = ({ onLogout }) => {
                     <TabButton active={activeTab === 'workouts'} onClick={() => setActiveTab('workouts')} icon={Activity} label="Вправи" />
                 </div>
 
-                {/* OVERVIEW */}
+                {/* --- OVERVIEW TAB (ГЛАВНАЯ) --- */}
                 {activeTab === 'overview' && (
-                    <div className="animate-fade-in">
-                        <h2 className="text-2xl font-bold text-slate-800 mb-6">Огляд системи</h2>
-                        <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-6">
-                            <StatCard title="Всього користувачів" value={stats.users} icon={Users} color="blue" />
-                            <StatCard title="Заявок на тренера" value={stats.pendingTrainers} icon={FileText} color="orange" />
-                            <StatCard title="Продуктів у базі" value={stats.foods} icon={Utensils} color="emerald" />
-                            <StatCard title="Типів тренувань" value={stats.workouts} icon={Activity} color="purple" />
+                    <div className="animate-fade-in space-y-8">
+                        {/* 1. Статистика */}
+                        <div>
+                            <h2 className="text-2xl font-bold text-slate-800 mb-6">Огляд системи</h2>
+                            <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-6">
+                                <StatCard title="Всього користувачів" value={stats.users} icon={Users} color="blue" />
+                                <StatCard title="Заявок на тренера" value={stats.pendingTrainers} icon={FileText} color="orange" />
+                                <StatCard title="Продуктів у базі" value={stats.foods} icon={Utensils} color="emerald" />
+                                <StatCard title="Типів тренувань" value={stats.workouts} icon={Activity} color="purple" />
+                            </div>
+                        </div>
+
+                        {/* 2. Популярные блюда (GRID) */}
+                        <div>
+                            <div className="flex justify-between items-end mb-6">
+                                <div>
+                                    <h3 className="text-xl font-bold text-slate-800">Меню FatBeaches</h3>
+                                    <p className="text-slate-500 text-sm">Останні додані страви</p>
+                                </div>
+                                <button onClick={() => setActiveTab('foods')} className="text-blue-600 font-bold text-sm hover:bg-blue-50 px-3 py-1 rounded-lg transition-colors">
+                                    Перейти до продуктів →
+                                </button>
+                            </div>
+
+                            <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-6">
+                                {dashboardDishes.map((dish, index) => (
+                                    <div key={dish.id || index} className="bg-white rounded-2xl p-3 shadow-sm border border-slate-100 hover:shadow-xl hover:-translate-y-1 transition-all duration-300 group cursor-pointer" onClick={() => setActiveTab('foods')}>
+                                        <div className="h-48 bg-slate-200 rounded-xl relative overflow-hidden mb-4">
+                                            {/* Автоматический подбор картинки для красоты */}
+                                            <img
+                                                src={dish.image_url || foodImages[index % foodImages.length]}
+                                                alt={dish.name}
+                                                className="w-full h-full object-cover group-hover:scale-110 transition-transform duration-700"
+                                            />
+                                            <div className="absolute inset-0 bg-gradient-to-t from-black/60 to-transparent opacity-0 group-hover:opacity-100 transition-opacity duration-300" />
+
+                                            <span className="absolute top-3 right-3 bg-white/95 backdrop-blur px-2.5 py-1 rounded-lg text-xs font-bold text-slate-800 shadow-sm flex items-center gap-1">
+                                                <Utensils size={10} className="text-orange-500" />
+                                                {dish.calories} ккал
+                                            </span>
+                                        </div>
+
+                                        <div className="px-1">
+                                            <h4 className="font-bold text-slate-800 text-lg mb-2 truncate" title={dish.name}>{dish.name}</h4>
+
+                                            <div className="flex items-center gap-2 text-xs text-slate-500 bg-slate-50 p-2 rounded-lg border border-slate-100">
+                                                <div className="flex-1 text-center border-r border-slate-200">
+                                                    <span className="block font-bold text-slate-700">Б</span> {dish.proteins}
+                                                </div>
+                                                <div className="flex-1 text-center border-r border-slate-200">
+                                                    <span className="block font-bold text-slate-700">Ж</span> {dish.fats}
+                                                </div>
+                                                <div className="flex-1 text-center">
+                                                    <span className="block font-bold text-slate-700">В</span> {dish.carbohydrates}
+                                                </div>
+                                            </div>
+                                        </div>
+                                    </div>
+                                ))}
+
+                                {/* Кнопка "Добавить новое" (Визуальная заглушка) */}
+                                <div
+                                    onClick={() => { setActiveTab('foods'); openModal(null); }}
+                                    className="border-2 border-dashed border-slate-200 rounded-2xl flex flex-col items-center justify-center text-slate-400 hover:text-blue-500 hover:border-blue-300 hover:bg-blue-50/50 transition-all cursor-pointer h-full min-h-[280px]"
+                                >
+                                    <div className="w-12 h-12 rounded-full bg-slate-100 flex items-center justify-center mb-3 group-hover:bg-blue-100 transition-colors">
+                                        <Plus size={24} />
+                                    </div>
+                                    <span className="font-bold text-sm">Додати страву</span>
+                                </div>
+                            </div>
                         </div>
                     </div>
                 )}
 
-                {/* LIST TABLES */}
+                {/* --- OTHER TABS (LISTS) --- */}
                 {activeTab !== 'overview' && (
                     <div className="animate-fade-in space-y-6">
                         <div className="flex flex-col md:flex-row gap-4 justify-between items-center">
@@ -406,7 +505,6 @@ const AdminDashboard = ({ onLogout }) => {
                                                                     </div>
                                                                     <div className="flex items-center gap-1 text-[10px] font-mono text-slate-400 mt-2 bg-slate-50 w-fit px-2 py-1 rounded">
                                                                         <Calendar size={10} />
-                                                                        {/* Using submitted_at from DB */}
                                                                         {new Date(item.submitted_at || item.created_at).toLocaleDateString('uk-UA')}
                                                                     </div>
                                                                 </div>
@@ -466,7 +564,6 @@ const AdminDashboard = ({ onLogout }) => {
                                                         {/* COL 3: Actions */}
                                                         <td className="p-5 text-right align-top">
                                                             <div className="flex justify-end gap-2">
-                                                                {/* Buttons for applications */}
                                                                 {activeTab === 'applications' && item.status === 'pending' && (
                                                                     <div className="flex flex-col gap-2">
                                                                         <button onClick={() => handleApplication(item.id, item.user_id, 'approved')} className="flex items-center justify-center gap-2 px-4 py-2 bg-emerald-500 hover:bg-emerald-600 text-white rounded-xl text-xs font-bold transition-all shadow-md shadow-emerald-200 w-32">
@@ -508,7 +605,7 @@ const AdminDashboard = ({ onLogout }) => {
             {/* --- MODAL ADD/EDIT --- */}
             {isModalOpen && (
                 <div className="fixed inset-0 bg-slate-900/40 backdrop-blur-sm z-50 flex items-center justify-center p-4">
-                    <div className="bg-white w-full max-w-lg rounded-[2rem] p-8 shadow-2xl">
+                    <div className="bg-white w-full max-w-lg rounded-[2rem] p-8 shadow-2xl animate-in zoom-in-95 duration-200">
                         <div className="flex justify-between items-center mb-6">
                             <h3 className="text-xl font-bold">{editingItem ? 'Редагувати' : 'Додати'}</h3>
                             <button onClick={() => setIsModalOpen(false)}><X size={24} className="text-slate-400" /></button>
@@ -516,10 +613,9 @@ const AdminDashboard = ({ onLogout }) => {
                         <div className="space-y-4">
                             <div>
                                 <label className="text-sm font-bold text-slate-700">Назва</label>
-                                <input type="text" className="w-full p-3 bg-slate-50 rounded-xl border-2 border-transparent focus:border-blue-500 outline-none" value={formData.name || ''} onChange={e => setFormData({ ...formData, name: e.target.value })} />
+                                <input type="text" className="w-full p-3 bg-slate-50 rounded-xl border-2 border-transparent focus:border-blue-500 outline-none transition-all" value={formData.name || ''} onChange={e => setFormData({ ...formData, name: e.target.value })} />
                             </div>
 
-                            {/* Food Fields */}
                             {activeTab === 'foods' && (
                                 <div className="grid grid-cols-2 gap-4">
                                     <div><label className="text-xs font-bold text-slate-500">Калорії</label><input type="number" className="w-full p-3 bg-slate-50 rounded-xl outline-none" value={formData.calories || ''} onChange={e => setFormData({ ...formData, calories: e.target.value })} /></div>
@@ -529,7 +625,6 @@ const AdminDashboard = ({ onLogout }) => {
                                 </div>
                             )}
 
-                            {/* Workout Fields (Fixed Variable Name) */}
                             {activeTab === 'workouts' && (
                                 <div>
                                     <label className="text-xs font-bold text-slate-500">Калорії (за годину)</label>
@@ -543,7 +638,7 @@ const AdminDashboard = ({ onLogout }) => {
                                 </div>
                             )}
 
-                            <button onClick={handleSaveItem} className="w-full bg-blue-600 text-white font-bold py-3 rounded-xl mt-4 flex justify-center gap-2"><Save size={20} /> Зберегти</button>
+                            <button onClick={handleSaveItem} className="w-full bg-blue-600 text-white font-bold py-3 rounded-xl mt-4 flex justify-center gap-2 hover:bg-blue-700 transition-all shadow-lg shadow-blue-200"><Save size={20} /> Зберегти</button>
                         </div>
                     </div>
                 </div>
@@ -552,13 +647,13 @@ const AdminDashboard = ({ onLogout }) => {
             {/* --- MODAL USER EDIT --- */}
             {isUserModalOpen && selectedUser && (
                 <div className="fixed inset-0 bg-slate-900/60 backdrop-blur-md z-[60] flex items-center justify-center p-4">
-                    <div className="bg-white w-full max-w-2xl rounded-[2.5rem] p-8 shadow-2xl relative flex flex-col md:flex-row gap-8">
-                        <button onClick={() => setIsUserModalOpen(false)} className="absolute top-4 right-4 p-2 bg-slate-100 rounded-full"><X size={20} /></button>
+                    <div className="bg-white w-full max-w-2xl rounded-[2.5rem] p-8 shadow-2xl relative flex flex-col md:flex-row gap-8 animate-in zoom-in-95 duration-200">
+                        <button onClick={() => setIsUserModalOpen(false)} className="absolute top-4 right-4 p-2 bg-slate-100 rounded-full hover:bg-slate-200 transition-colors"><X size={20} /></button>
                         <div className="flex-1">
                             <h3 className="text-xl font-black mb-1">{getUserDisplayName(selectedUser)}</h3>
                             <p className="text-sm text-slate-500 mb-4">{selectedUser.email}</p>
                             {loadingProfile ? <p>Завантаження...</p> : userProfile ? (
-                                <div className="space-y-2">
+                                <div className="space-y-2 bg-slate-50 p-4 rounded-xl">
                                     <div className="flex gap-2"><span className="font-bold">Вага:</span> {userProfile.weight_kg} кг</div>
                                     <div className="flex gap-2"><span className="font-bold">Зріст:</span> {userProfile.height_cm} см</div>
                                     <div className="flex gap-2"><span className="font-bold">Ціль:</span> {userProfile.goal}</div>
@@ -566,16 +661,16 @@ const AdminDashboard = ({ onLogout }) => {
                             ) : <p className="text-slate-400 border p-2 rounded text-center text-sm">Профіль не заповнено</p>}
                         </div>
                         <div className="flex-1 border-l pl-8 space-y-4">
-                            <h4 className="font-bold flex items-center gap-2"><Edit2 size={16} /> Редагувати доступ</h4>
+                            <h4 className="font-bold flex items-center gap-2 text-slate-800"><Edit2 size={16} /> Редагувати доступ</h4>
                             <div>
-                                <label className="block text-xs font-bold text-slate-500 mb-1">Роль</label>
-                                <div className="flex gap-2">{['customer', 'trainer', 'admin'].map(r => <button key={r} onClick={() => setUserRole(r)} className={`px-3 py-1 rounded capitalize border ${userRole === r ? 'bg-blue-50 border-blue-500 text-blue-700' : 'bg-white'}`}>{r}</button>)}</div>
+                                <label className="block text-xs font-bold text-slate-500 mb-2">Роль</label>
+                                <div className="flex gap-2">{['customer', 'trainer', 'admin'].map(r => <button key={r} onClick={() => setUserRole(r)} className={`px-3 py-1.5 rounded-lg capitalize border font-medium transition-all ${userRole === r ? 'bg-slate-800 border-slate-800 text-white shadow-md' : 'bg-white text-slate-600 hover:bg-slate-50'}`}>{r}</button>)}</div>
                             </div>
                             <div>
-                                <label className="block text-xs font-bold text-slate-500 mb-1">Статус</label>
-                                <div className="flex gap-2">{['active', 'banned'].map(s => <button key={s} onClick={() => setUserStatus(s)} className={`px-3 py-1 rounded capitalize border ${userStatus === s ? (s === 'active' ? 'bg-emerald-50 border-emerald-500 text-emerald-700' : 'bg-red-50 border-red-500 text-red-700') : 'bg-white'}`}>{s}</button>)}</div>
+                                <label className="block text-xs font-bold text-slate-500 mb-2">Статус</label>
+                                <div className="flex gap-2">{['active', 'banned'].map(s => <button key={s} onClick={() => setUserStatus(s)} className={`px-3 py-1.5 rounded-lg capitalize border font-medium transition-all ${userStatus === s ? (s === 'active' ? 'bg-emerald-500 border-emerald-500 text-white shadow-emerald-200 shadow-md' : 'bg-red-500 border-red-500 text-white shadow-red-200 shadow-md') : 'bg-white text-slate-600 hover:bg-slate-50'}`}>{s}</button>)}</div>
                             </div>
-                            <button onClick={handleUpdateUser} className="w-full bg-slate-900 text-white font-bold py-3 rounded-xl flex justify-center gap-2"><Save size={18} /> Зберегти</button>
+                            <button onClick={handleUpdateUser} className="w-full bg-slate-900 hover:bg-slate-800 text-white font-bold py-3 rounded-xl flex justify-center gap-2 transition-all shadow-xl shadow-slate-200 mt-4"><Save size={18} /> Зберегти</button>
                         </div>
                     </div>
                 </div>
@@ -592,7 +687,7 @@ const StatCard = ({ title, value, icon, color }) => {
         purple: 'bg-purple-50 text-purple-600'
     };
     return (
-        <div className="bg-white p-6 rounded-[2rem] border border-slate-100 shadow-sm flex items-center gap-4">
+        <div className="bg-white p-6 rounded-[2rem] border border-slate-100 shadow-sm flex items-center gap-4 hover:shadow-md transition-shadow">
             <div className={`p-4 rounded-2xl ${colors[color]}`}>
                 {React.createElement(icon, { size: 24 })}
             </div>
@@ -605,10 +700,10 @@ const StatCard = ({ title, value, icon, color }) => {
 };
 
 const TabButton = ({ active, onClick, icon, label, badge }) => (
-    <button onClick={onClick} className={`flex items-center gap-2 px-5 py-2.5 rounded-xl font-bold transition-all text-sm ${active ? 'bg-slate-900 text-white shadow-md' : 'bg-transparent text-slate-500 hover:bg-slate-50'}`}>
+    <button onClick={onClick} className={`flex items-center gap-2 px-5 py-2.5 rounded-xl font-bold transition-all text-sm ${active ? 'bg-slate-900 text-white shadow-md scale-105' : 'bg-transparent text-slate-500 hover:bg-slate-50'}`}>
         {React.createElement(icon, { size: 16 })}
         {label}
-        {badge > 0 && <span className="ml-1 bg-red-500 text-white text-[10px] px-1.5 py-0.5 rounded-full">{badge}</span>}
+        {badge > 0 && <span className="ml-1 bg-red-500 text-white text-[10px] px-1.5 py-0.5 rounded-full shadow-sm">{badge}</span>}
     </button>
 );
 
