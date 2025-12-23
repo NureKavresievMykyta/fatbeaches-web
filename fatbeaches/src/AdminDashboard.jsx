@@ -56,6 +56,15 @@ const AdminDashboard = ({ onLogout }) => {
     const handleAdd = async () => {
         try {
             const table = activeTab === 'foods' ? 'food_items' : 'workout_items';
+
+            // Валідація для продуктів
+            if (activeTab === 'foods') {
+                if (!newItem.name || !newItem.calories) {
+                    alert('Будь ласка, заповніть назву та калорії');
+                    return;
+                }
+            }
+
             const { data, error } = await supabase.from(table).insert([newItem]).select();
 
             if (error) throw error;
@@ -127,7 +136,7 @@ const AdminDashboard = ({ onLogout }) => {
                                     <tr>
                                         <th className="p-5 text-xs font-black text-slate-400 uppercase tracking-wider">ID</th>
                                         <th className="p-5 text-xs font-black text-slate-400 uppercase tracking-wider">Назва / Email</th>
-                                        <th className="p-5 text-xs font-black text-slate-400 uppercase tracking-wider">Деталі</th>
+                                        <th className="p-5 text-xs font-black text-slate-400 uppercase tracking-wider">Деталі (КБЖВ)</th>
                                         <th className="p-5 text-right text-xs font-black text-slate-400 uppercase tracking-wider">Дії</th>
                                     </tr>
                                 </thead>
@@ -137,7 +146,14 @@ const AdminDashboard = ({ onLogout }) => {
                                             <td className="p-5 text-slate-400 font-mono text-xs">{item.id}</td>
                                             <td className="p-5 font-bold text-slate-700">{item.name || item.email || 'Без назви'}</td>
                                             <td className="p-5 text-sm text-slate-500">
-                                                {activeTab === 'foods' && `${item.calories} ккал`}
+                                                {activeTab === 'foods' && (
+                                                    <div className="flex gap-3">
+                                                        <span className="text-orange-500 font-bold">{item.calories} ккал</span>
+                                                        <span className="text-blue-500">Б: {item.protein || 0}</span>
+                                                        <span className="text-yellow-500">Ж: {item.fat || 0}</span>
+                                                        <span className="text-emerald-500">В: {item.carbs || 0}</span>
+                                                    </div>
+                                                )}
                                                 {activeTab === 'users' && `Роль: ${item.role}`}
                                                 {activeTab === 'workouts' && 'Активність'}
                                             </td>
@@ -182,13 +198,14 @@ const AdminDashboard = ({ onLogout }) => {
                                     className="w-full p-3 bg-slate-50 rounded-xl outline-none focus:ring-2 focus:ring-blue-500"
                                     value={newItem.name || ''}
                                     onChange={e => setNewItem({ ...newItem, name: e.target.value })}
+                                    placeholder="Наприклад: Вівсянка"
                                 />
                             </div>
 
                             {activeTab === 'foods' && (
                                 <div className="grid grid-cols-2 gap-4">
                                     <div>
-                                        <label className="block text-sm font-bold text-slate-700 mb-1">Калорії</label>
+                                        <label className="block text-sm font-bold text-slate-700 mb-1">Калорії (ккал)</label>
                                         <input
                                             type="number"
                                             className="w-full p-3 bg-slate-50 rounded-xl outline-none focus:ring-2 focus:ring-blue-500"
@@ -197,12 +214,30 @@ const AdminDashboard = ({ onLogout }) => {
                                         />
                                     </div>
                                     <div>
-                                        <label className="block text-sm font-bold text-slate-700 mb-1">Білки</label>
+                                        <label className="block text-sm font-bold text-slate-700 mb-1">Білки (г)</label>
                                         <input
                                             type="number"
                                             className="w-full p-3 bg-slate-50 rounded-xl outline-none focus:ring-2 focus:ring-blue-500"
                                             value={newItem.protein || ''}
                                             onChange={e => setNewItem({ ...newItem, protein: e.target.value })}
+                                        />
+                                    </div>
+                                    <div>
+                                        <label className="block text-sm font-bold text-slate-700 mb-1">Жири (г)</label>
+                                        <input
+                                            type="number"
+                                            className="w-full p-3 bg-slate-50 rounded-xl outline-none focus:ring-2 focus:ring-blue-500"
+                                            value={newItem.fat || ''}
+                                            onChange={e => setNewItem({ ...newItem, fat: e.target.value })}
+                                        />
+                                    </div>
+                                    <div>
+                                        <label className="block text-sm font-bold text-slate-700 mb-1">Вуглеводи (г)</label>
+                                        <input
+                                            type="number"
+                                            className="w-full p-3 bg-slate-50 rounded-xl outline-none focus:ring-2 focus:ring-blue-500"
+                                            value={newItem.carbs || ''}
+                                            onChange={e => setNewItem({ ...newItem, carbs: e.target.value })}
                                         />
                                     </div>
                                 </div>
@@ -222,7 +257,7 @@ const AdminDashboard = ({ onLogout }) => {
     );
 };
 
-// Використовуємо React.createElement, щоб лінтер не сварився на "невикористану" змінну
+// Використовуємо React.createElement, щоб лінтер не сварився
 const TabButton = ({ active, onClick, icon, label }) => (
     <button
         onClick={onClick}
