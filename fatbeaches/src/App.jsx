@@ -98,9 +98,8 @@ const FoodModal = ({ session, mealType, onClose, onFoodAdded, role }) => {
     const handleCreateFood = async (e) => {
         e.preventDefault();
 
-        // LOGIC: Trainer creating in public tab OR creating via "Add to DB" button -> Public
-        // Otherwise -> Private
-        const shouldBePublic = (role === 'trainer' && activeTab === 'public') || (!mealType && role === 'trainer');
+        // Изменил логику: Public только когда тренер и текущая вкладка — public (База тренерів).
+        const shouldBePublic = (role === 'trainer' && activeTab === 'public');
 
         const { error } = await supabase.from('food_items').insert({
             name: newFood.name,
@@ -269,8 +268,8 @@ const FoodModal = ({ session, mealType, onClose, onFoodAdded, role }) => {
                             <h3 className="text-2xl font-bold text-slate-800">Створення страви</h3>
                         </div>
 
-                        <div className={`mb-6 p-3 rounded-xl flex items-center gap-3 text-sm font-medium ${((role === 'trainer' && activeTab === 'public') || (!mealType && role === 'trainer')) ? 'bg-blue-50 text-blue-700' : 'bg-slate-50 text-slate-600'}`}>
-                            {((role === 'trainer' && activeTab === 'public') || (!mealType && role === 'trainer')) ? (
+                        <div className={`mb-6 p-3 rounded-xl flex items-center gap-3 text-sm font-medium ${((role === 'trainer' && activeTab === 'public')) ? 'bg-blue-50 text-blue-700' : 'bg-slate-50 text-slate-600'}`}>
+                            {((role === 'trainer' && activeTab === 'public')) ? (
                                 <>
                                     <Globe size={18} />
                                     <span>Це блюдо буде додано в <strong>Загальну Базу</strong> (видно всім).</span>
@@ -317,6 +316,7 @@ const FoodModal = ({ session, mealType, onClose, onFoodAdded, role }) => {
     );
 };
 
+// ... остальной код файла без изменений ...
 const WorkoutModal = ({ session, onClose, onWorkoutAdded }) => {
     const [duration, setDuration] = useState(30);
     const [activities, setActivities] = useState([]);
@@ -548,6 +548,7 @@ const RoleSelection = ({ session, onRoleSelected }) => {
         </div>
     );
 };
+
 
 const TrainerVerification = ({ session, onSubmitted, onBack }) => {
     const [details, setDetails] = useState('');
