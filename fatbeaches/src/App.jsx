@@ -116,7 +116,7 @@ const FoodModal = ({ session, mealType, onClose, onFoodAdded, role }) => {
             // Успішно створено
             if (!mealType) {
                 // Якщо ми просто створювали страву в базу (не в обід), то просто закриваємо або скидаємо
-                alert("Страву успішно створено в базі!");
+                alert("Страву успішно створено!");
                 setIsCreating(false);
                 setNewFood({ name: '', calories: '', proteins: '', fats: '', carbs: '' });
                 // Можна оновити список
