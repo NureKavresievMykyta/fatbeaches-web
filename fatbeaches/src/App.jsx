@@ -9,8 +9,6 @@ import {
 } from 'lucide-react';
 import AnalyticsView from './AnalyticsView';
 
-
-
 const MealCard = ({ title, icon, calories, color, bg, onClick }) => {
     const IconComponent = icon;
     return (
@@ -123,7 +121,6 @@ const FoodModal = ({ session, mealType, onClose, onFoodAdded }) => {
     return (
         <div className="fixed inset-0 bg-slate-900/40 backdrop-blur-sm flex items-end sm:items-center justify-center z-50 p-0 sm:p-4 animate-fade-in">
             <div className="bg-white w-full max-w-lg h-[90vh] sm:h-auto sm:max-h-[85vh] rounded-t-[2rem] sm:rounded-[2rem] shadow-2xl flex flex-col overflow-hidden">
-
                 <div className="bg-white p-6 border-b border-slate-100 flex justify-between items-center shrink-0">
                     <div>
                         <h3 className="text-xl font-bold text-slate-800">Додати у {getMealName(mealType)}</h3>
@@ -233,7 +230,6 @@ const FoodModal = ({ session, mealType, onClose, onFoodAdded }) => {
                                 <label className="text-xs font-bold text-slate-400 uppercase ml-1">Назва продукту</label>
                                 <input required value={newFood.name} onChange={e => setNewFood({ ...newFood, name: e.target.value })} className="w-full p-4 bg-slate-50 rounded-2xl border border-slate-100 outline-none focus:border-emerald-300 focus:bg-white transition-all font-medium" placeholder="Наприклад: Гречка" />
                             </div>
-
                             <div className="grid grid-cols-2 gap-4">
                                 <div>
                                     <label className="text-xs font-bold text-slate-400 uppercase ml-1">Ккал (на 100г)</label>
@@ -263,21 +259,12 @@ const FoodModal = ({ session, mealType, onClose, onFoodAdded }) => {
     );
 };
 
-const WORKOUT_TYPES = {
-    running: 1,
-    walking: 2,
-    cycling: 3,
-    strength: 4,
-    yoga: 5
-};
-
-const WorkoutModal = ({ session, onClose, onWorkoutAdded }) => { // <--- Прибрали 'profile' тут
+const WorkoutModal = ({ session, onClose, onWorkoutAdded }) => {
     const [duration, setDuration] = useState(30);
     const [activities, setActivities] = useState([]);
     const [selectedActivityId, setSelectedActivityId] = useState('');
     const [loading, setLoading] = useState(false);
 
-    // Завантаження активностей з бази даних
     useEffect(() => {
         const fetchActivities = async () => {
             const { data, error } = await supabase
@@ -296,7 +283,6 @@ const WorkoutModal = ({ session, onClose, onWorkoutAdded }) => { // <--- При�
     const calculateBurned = () => {
         const activity = activities.find(a => a.workout_item_id == selectedActivityId);
         if (!activity || !activity.calories_per_hour) return 0;
-        // Формула: (Калорії за годину / 60) * тривалість
         return Math.round((activity.calories_per_hour / 60) * duration);
     };
 
@@ -317,7 +303,7 @@ const WorkoutModal = ({ session, onClose, onWorkoutAdded }) => { // <--- При�
             .from('workout_entries')
             .insert({
                 user_id: session.user.id,
-                workout_item_id: selectedActivityId,
+                workout_item_id: parseInt(selectedActivityId, 10),
                 duration_minutes: parseInt(duration, 10),
                 calories_burned_estimated: burned,
                 date_time: new Date().toISOString()
@@ -339,9 +325,7 @@ const WorkoutModal = ({ session, onClose, onWorkoutAdded }) => { // <--- При�
                 <button onClick={onClose} className="absolute top-6 right-6 p-2 text-slate-400 hover:text-slate-600 transition-colors">
                     <X size={20} />
                 </button>
-
                 <h3 className="text-2xl font-bold text-slate-800 mb-6">Нове тренування</h3>
-
                 <div className="space-y-6">
                     <div>
                         <label className="text-xs font-bold text-slate-400 uppercase ml-1 tracking-wider">Вид активності</label>
@@ -363,7 +347,6 @@ const WorkoutModal = ({ session, onClose, onWorkoutAdded }) => { // <--- При�
                             </div>
                         )}
                     </div>
-
                     <div className="bg-emerald-50 p-6 rounded-[2rem] text-center border border-emerald-100 relative overflow-hidden">
                         <div className="absolute -right-4 -top-4 w-16 h-16 bg-emerald-200/20 rounded-full blur-xl"></div>
                         <label className="block text-sm font-bold text-emerald-700 mb-2 uppercase tracking-wide">Тривалість (хв)</label>
@@ -377,14 +360,11 @@ const WorkoutModal = ({ session, onClose, onWorkoutAdded }) => { // <--- При�
                         <div className="mt-4 pt-4 border-t border-emerald-200/50">
                             <p className="text-emerald-600/70 text-sm font-medium">Очікуваний результат:</p>
                             <div className="flex items-center justify-center gap-2">
-                                <span className="text-3xl font-black text-emerald-700">
-                                    {calculateBurned()}
-                                </span>
+                                <span className="text-3xl font-black text-emerald-700">{calculateBurned()}</span>
                                 <span className="text-sm font-bold text-emerald-600 uppercase">ккал</span>
                             </div>
                         </div>
                     </div>
-
                     <button
                         onClick={handleSave}
                         disabled={loading || activities.length === 0}
@@ -397,6 +377,7 @@ const WorkoutModal = ({ session, onClose, onWorkoutAdded }) => { // <--- При�
         </div>
     );
 };
+
 const AuthPage = () => {
     const [isLogin, setIsLogin] = useState(true);
     const [email, setEmail] = useState('');
@@ -561,7 +542,7 @@ const TrainerPending = () => (
             <h2 className="text-2xl font-bold text-slate-800 mb-2">Заявка на розгляді</h2>
             <p className="text-slate-500 mb-8">Адміністратор перевірить ваші дані. Очікуйте.</p>
             <button onClick={() => supabase.auth.signOut()} className="text-slate-400 hover:text-red-500 font-medium flex items-center justify-center gap-2 mx-auto">
-                <LogOut size={18} /> Выйти
+                <LogOut size={18} /> Вийти
             </button>
         </div>
     </div>
@@ -585,8 +566,8 @@ const ProfileSetup = ({ session, onComplete, onBack, initialData }) => {
 
         let bmr = (10 * w) + (6.25 * h) - (5 * a) + (formData.gender === 'male' ? 5 : -161);
         let calories = Math.round(bmr * 1.375);
-        if (formData.goal === 'lose_weight') calories -= 500;
-        if (formData.goal === 'gain_muscle') calories += 400;
+        if (formData.goal === 'lose weight') calories -= 500;
+        if (formData.goal === 'gain muscle') calories += 400;
 
         const updates = {
             user_id: session.user.id,
@@ -647,9 +628,9 @@ const ProfileSetup = ({ session, onComplete, onBack, initialData }) => {
                             <label className="text-xs font-bold text-slate-400 uppercase ml-2">Ціль</label>
                             <div className="relative">
                                 <select value={formData.goal} onChange={e => setFormData({ ...formData, goal: e.target.value })} className="w-full p-4 rounded-2xl bg-slate-50 outline-none font-medium text-slate-700 cursor-pointer border border-slate-100 appearance-none">
-                                    <option value="lose_weight">Схуднути</option>
+                                    <option value="lose weight">Схуднути</option>
                                     <option value="maintain">Форма</option>
-                                    <option value="gain_muscle">Маса</option>
+                                    <option value="gain muscle">Маса</option>
                                 </select>
                             </div>
                         </div>
@@ -667,7 +648,7 @@ const Dashboard = ({ session, profile, onEditProfile }) => {
     const [menuOpen, setMenuOpen] = useState(false);
     const [showFoodModal, setShowFoodModal] = useState(false);
     const [showWorkoutModal, setShowWorkoutModal] = useState(false);
-    const [showAnalytics, setShowAnalytics] = useState(false); // Стан для відкриття аналітики
+    const [showAnalytics, setShowAnalytics] = useState(false);
     const [selectedMeal, setSelectedMeal] = useState(null);
     const [consumedCalories, setConsumedCalories] = useState(0);
     const [burnedCalories, setBurnedCalories] = useState(0);
@@ -675,17 +656,15 @@ const Dashboard = ({ session, profile, onEditProfile }) => {
     const [updateTrigger, setUpdateTrigger] = useState(0);
     const menuRef = useRef(null);
 
-    // Функція для відкриття модального вікна їжі
     const openFoodModal = (mealType) => {
         setSelectedMeal(mealType);
         setShowFoodModal(true);
     };
 
-    // Завантаження статистики їжі та спорту за сьогодні
     useEffect(() => {
         let isMounted = true;
         const loadStats = async () => {
-            const today = new Date().toISOString().split('T')[0];
+            const today = new Date().toLocaleDateString('en-CA');
             const startTime = `${today}T00:00:00`;
             const endTime = `${today}T23:59:59`;
 
@@ -725,7 +704,6 @@ const Dashboard = ({ session, profile, onEditProfile }) => {
         return () => { isMounted = false; };
     }, [session.user.id, updateTrigger]);
 
-    // Закриття випадаючого меню при кліку зовні
     useEffect(() => {
         const handleClickOutside = (event) => {
             if (menuRef.current && !menuRef.current.contains(event.target)) {
@@ -736,9 +714,8 @@ const Dashboard = ({ session, profile, onEditProfile }) => {
         return () => document.removeEventListener("mousedown", handleClickOutside);
     }, []);
 
-    // Розрахунки для хедера та шкали прогресу
     const dailyGoal = profile?.daily_calories_goal || 2000;
-    const netCalories = consumedCalories - burnedCalories; // "Чисті" калорії
+    const netCalories = consumedCalories - burnedCalories;
     const remainingCalories = Math.max(0, dailyGoal - netCalories);
     const progressPercent = Math.round((netCalories / dailyGoal) * 100);
 
@@ -772,9 +749,8 @@ const Dashboard = ({ session, profile, onEditProfile }) => {
                                     </button>
                                     <button
                                         onClick={() => {
-                                            console.log("Кнопка натиснута!"); // Це допоможе побачити реакцію в консолі браузера (F12)
-                                            setShowAnalytics(true);           // Активуємо показ аналітики
-                                            setMenuOpen(false);               // Закриваємо випадаюче меню
+                                            setShowAnalytics(true);
+                                            setMenuOpen(false);
                                         }}
                                         className="w-full flex items-center gap-3 p-3 rounded-xl hover:bg-slate-50 text-slate-600 text-sm font-medium transition-colors text-left"
                                     >
@@ -792,7 +768,6 @@ const Dashboard = ({ session, profile, onEditProfile }) => {
                     </div>
                 </div>
 
-                {/* Віджет статистики з трьома колонками */}
                 <div className="bg-gradient-to-br from-emerald-500 to-emerald-600 text-white p-7 rounded-[2.5rem] shadow-xl shadow-emerald-200 relative overflow-hidden">
                     <div className="absolute -right-10 -top-10 w-48 h-48 bg-white opacity-10 rounded-full blur-3xl"></div>
 
@@ -832,7 +807,6 @@ const Dashboard = ({ session, profile, onEditProfile }) => {
             </header>
 
             <main className="px-6 space-y-6 relative z-10">
-                {/* Кнопка додавання тренування */}
                 <button
                     onClick={() => setShowWorkoutModal(true)}
                     className="w-full bg-blue-600 text-white p-6 rounded-[2rem] shadow-lg shadow-blue-100 flex items-center justify-between group hover:bg-blue-700 transition-all active:scale-95"
@@ -859,7 +833,6 @@ const Dashboard = ({ session, profile, onEditProfile }) => {
                     </div>
                 </div>
 
-                {/* Показник ваги */}
                 <div className="bg-white p-6 rounded-[2rem] shadow-sm border border-slate-100 flex items-center gap-4 transition-all hover:shadow-md">
                     <div className="p-4 bg-purple-50 text-purple-500 rounded-2xl"><Scale size={24} /></div>
                     <div>
@@ -869,18 +842,13 @@ const Dashboard = ({ session, profile, onEditProfile }) => {
                 </div>
             </main>
 
-            {/* ВІКНО АНАЛІТИКИ (Графіки) */}
             {showAnalytics && (
                 <AnalyticsView
                     session={session}
-                    onClose={() => {
-                        console.log("ЗАКРИТТЯ АНАЛІТИКИ");
-                        setShowAnalytics(false);
-                    }}
+                    onClose={() => setShowAnalytics(false)}
                 />
             )}
 
-            {/* ВІКНО ДОДАВАННЯ ЇЖІ */}
             {showFoodModal && (
                 <FoodModal
                     session={session}
@@ -898,25 +866,20 @@ const Dashboard = ({ session, profile, onEditProfile }) => {
                     onWorkoutAdded={() => setUpdateTrigger(t => t + 1)}
                 />
             )}
-
         </div>
-    ); // <-- ТУТ ЗАКІНЧУЄТЬСЯ RETURN
-}; // <-- ТУТ ЗАКІНЧУЄТЬСЯ КОМПОНЕНТ
-
-// 3. Експорт завжди робимо в самому кінці файлу
+    );
+};
 
 function App() {
     const [session, setSession] = useState(null);
-    const [role, setRole] = useState(null); // Тут буде 'customer', 'trainer' або 'admin'
+    const [role, setRole] = useState(null);
     const [profile, setProfile] = useState(null);
     const [trainerApp, setTrainerApp] = useState(null);
     const [loading, setLoading] = useState(true);
     const [isEditingProfile, setIsEditingProfile] = useState(false);
 
-    // Функція перевірки статусу користувача
     const checkUserStatus = useCallback(async (userId) => {
         try {
-            // 1. Отримуємо роль з таблиці users
             const { data: userData } = await supabase
                 .from('users')
                 .select('role')
@@ -926,9 +889,7 @@ function App() {
             if (userData) {
                 setRole(userData.role);
 
-                // 2. Логіка завантаження даних залежно від ролі
                 if (userData.role === 'admin') {
-                    // Для адміна додаткові дані (профіль/заявка) не потрібні
                     setLoading(false);
                     return;
                 }
@@ -941,7 +902,6 @@ function App() {
                         .single();
                     setTrainerApp(appData);
                 } else {
-                    // За замовчуванням вважаємо клієнтом ('customer')
                     const { data: profileData } = await supabase
                         .from('user_profiles')
                         .select('*')
@@ -960,20 +920,17 @@ function App() {
     }, []);
 
     useEffect(() => {
-        // Перевірка сесії при завантаженні
         supabase.auth.getSession().then(({ data: { session } }) => {
             setSession(session);
             if (session) checkUserStatus(session.user.id);
             else setLoading(false);
         });
 
-        // Слухач змін авторизації (вхід/вихід)
         const { data: { subscription } } = supabase.auth.onAuthStateChange((_event, session) => {
             setSession(session);
             if (session) {
                 checkUserStatus(session.user.id);
             } else {
-                // Скидання стану при виході
                 setRole(null);
                 setProfile(null);
                 setTrainerApp(null);
@@ -992,7 +949,6 @@ function App() {
         await supabase.auth.signOut();
     };
 
-    // 1. Екран завантаження
     if (loading) {
         return (
             <div className="h-screen flex items-center justify-center bg-slate-50">
@@ -1001,15 +957,12 @@ function App() {
         );
     }
 
-    // 2. Якщо немає сесії -> Авторизація
     if (!session) return <AuthPage />;
 
-    // 3. Якщо роль АДМІН -> Адмін Панель (НОВЕ)
     if (role === 'admin') {
         return <AdminDashboard session={session} onLogout={handleLogout} />;
     }
 
-    // 4. Логіка для нових користувачів (без ролі або профілю)
     if (!profile && !trainerApp && (role === 'customer' || !role)) {
         if (!role) {
             return <RoleSelection session={session} onRoleSelected={(r) => setRole(r)} />;
@@ -1022,7 +975,6 @@ function App() {
         }
     }
 
-    // 5. Логіка для Тренера
     if (role === 'trainer') {
         if (!trainerApp) {
             return <TrainerVerification session={session} onBack={handleBackToRole} onSubmitted={() => checkUserStatus(session.user.id)} />;
@@ -1033,7 +985,6 @@ function App() {
         return <div className="p-10 text-center">Тренерська панель (В розробці)</div>;
     }
 
-    // 6. Редагування профілю
     if (isEditingProfile) {
         return (
             <ProfileSetup
@@ -1044,12 +995,10 @@ function App() {
         );
     }
 
-    // 7. Якщо роль customer, але профіль не завантажився (рідкісний кейс, але можливий)
     if (!profile && role === 'customer') {
         return <ProfileSetup session={session} onBack={handleBackToRole} onComplete={() => checkUserStatus(session.user.id)} />;
     }
 
-    // 8. Головний Дашборд Клієнта
     return <Dashboard session={session} profile={profile} onEditProfile={() => setIsEditingProfile(true)} />;
 }
 

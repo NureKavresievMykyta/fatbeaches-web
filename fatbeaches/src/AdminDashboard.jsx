@@ -2,10 +2,10 @@
 import {
     Users, Utensils, Activity, Plus, Trash2, Save, X, Search,
     Eye, Edit2, Check, XOctagon, Calendar,
-    LayoutDashboard, FileText, ArrowUpDown, Dumbbell,
-    Coffee, Fish, Carrot, Apple
+    LayoutDashboard, FileText, ArrowUpDown
 } from 'lucide-react';
 import { supabase } from './supabase';
+import { Coffee, Fish, Carrot, Apple } from 'lucide-react';
 
 const AdminDashboard = ({ onLogout }) => {
     // --- КОНФІГУРАЦІЯ ТАБЛИЦЬ (Строго по PDF) ---
@@ -142,11 +142,9 @@ const AdminDashboard = ({ onLogout }) => {
                 const { data: apps, error: appError } = await query;
                 if (appError) throw appError;
 
-                // --- ВИПРАВЛЕННЯ ТУТ ---
-                // Запитуємо тільки ті поля, які існують в таблиці users (згідно PDF Source 44)
                 const { data: users, error: userError } = await supabase
                     .from('users')
-                    .select('user_id, email, name'); // Прибрали first_name, last_name, бо їх немає
+                    .select('user_id, email, name');
 
                 if (userError) {
                     console.error("Error fetching users for apps:", userError);
@@ -264,7 +262,8 @@ const AdminDashboard = ({ onLogout }) => {
             }
 
             if (activeTab === 'users') {
-                await supabase.from('food_items').delete().eq('created_by_user_id', idToDelete).maybeSingle();
+                // FIXED: Removed .maybeSingle() to correctly delete multiple items created by user
+                await supabase.from('food_items').delete().eq('created_by_user_id', idToDelete);
                 await supabase.from('trainer_applications').delete().eq('user_id', idToDelete);
                 await supabase.from('user_profiles').delete().eq('user_id', idToDelete);
             }
@@ -394,7 +393,6 @@ const AdminDashboard = ({ onLogout }) => {
     function getUserDisplayName(user) {
         if (!user) return 'Користувач (ID...)';
         if (user.name) return user.name;
-        // Видалено перевірку first_name/last_name, бо таких колонок немає
         if (user.email) return user.email;
         return `ID: ${user.user_id?.substring(0, 6)}`;
     };
@@ -472,7 +470,7 @@ const AdminDashboard = ({ onLogout }) => {
                             </div>
                         </div>
 
-                        {/* Grid Dashboard (АЛЬТЕРНАТИВА ФОТО - КАРТКИ) */}
+                        {/* Grid Dashboard */}
                         <div>
                             <div className="flex justify-between items-end mb-6">
                                 <div>
@@ -617,8 +615,8 @@ const AdminDashboard = ({ onLogout }) => {
                                                                     </div>
                                                                     <div>
                                                                         <span className={`px-3 py-1 rounded-full text-[10px] font-black uppercase tracking-wide border ${item.status === 'pending' ? 'bg-orange-50 text-orange-600 border-orange-200' :
-                                                                                item.status === 'approved' ? 'bg-emerald-50 text-emerald-600 border-emerald-200' :
-                                                                                    'bg-red-50 text-red-600 border-red-200'
+                                                                            item.status === 'approved' ? 'bg-emerald-50 text-emerald-600 border-emerald-200' :
+                                                                                'bg-red-50 text-red-600 border-red-200'
                                                                             }`}>
                                                                             {item.status === 'pending' ? 'Очікує розгляду' : item.status === 'approved' ? 'Схвалено' : 'Відхилено'}
                                                                         </span>
