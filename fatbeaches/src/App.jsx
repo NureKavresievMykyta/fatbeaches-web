@@ -271,10 +271,10 @@ const WORKOUT_TYPES = {
     yoga: 5
 };
 
-const WorkoutModal = ({ session, profile, onClose, onWorkoutAdded }) => {
+const WorkoutModal = ({ session, onClose, onWorkoutAdded }) => { // <--- Прибрали 'profile' тут
     const [duration, setDuration] = useState(30);
-    const [activities, setActivities] = useState([]); // Список активностей з БД
-    const [selectedActivityId, setSelectedActivityId] = useState(''); // ID вибраної активності
+    const [activities, setActivities] = useState([]);
+    const [selectedActivityId, setSelectedActivityId] = useState('');
     const [loading, setLoading] = useState(false);
 
     // Завантаження активностей з бази даних
@@ -283,23 +283,19 @@ const WorkoutModal = ({ session, profile, onClose, onWorkoutAdded }) => {
             const { data, error } = await supabase
                 .from('workout_items')
                 .select('workout_item_id, name, calories_per_hour')
-                .eq('is_public_plan', true); // (Опціонально) Тільки публічні, або прибери цей фільтр
+                .order('name');
 
             if (!error && data && data.length > 0) {
                 setActivities(data);
-                setSelectedActivityId(data[0].workout_item_id); // Вибираємо перший елемент за замовчуванням
+                setSelectedActivityId(data[0].workout_item_id);
             }
         };
         fetchActivities();
     }, []);
 
-    // Функція розрахунку калорій на основі даних з БД
     const calculateBurned = () => {
-        // Знаходимо вибрану активність у списку
         const activity = activities.find(a => a.workout_item_id == selectedActivityId);
-
         if (!activity || !activity.calories_per_hour) return 0;
-
         // Формула: (Калорії за годину / 60) * тривалість
         return Math.round((activity.calories_per_hour / 60) * duration);
     };
@@ -321,7 +317,7 @@ const WorkoutModal = ({ session, profile, onClose, onWorkoutAdded }) => {
             .from('workout_entries')
             .insert({
                 user_id: session.user.id,
-                [cite_start]workout_item_id: selectedActivityId, // Використовуємо ID з бази [cite: 45]
+                workout_item_id: selectedActivityId,
                 duration_minutes: parseInt(duration, 10),
                 calories_burned_estimated: burned,
                 date_time: new Date().toISOString()
@@ -368,12 +364,9 @@ const WorkoutModal = ({ session, profile, onClose, onWorkoutAdded }) => {
                         )}
                     </div>
 
-                    {/* БЛОК АВТОМАТИЧНОГО РОЗРАХУНКУ */}
                     <div className="bg-emerald-50 p-6 rounded-[2rem] text-center border border-emerald-100 relative overflow-hidden">
                         <div className="absolute -right-4 -top-4 w-16 h-16 bg-emerald-200/20 rounded-full blur-xl"></div>
-
                         <label className="block text-sm font-bold text-emerald-700 mb-2 uppercase tracking-wide">Тривалість (хв)</label>
-
                         <input
                             type="number"
                             value={duration}
@@ -381,7 +374,6 @@ const WorkoutModal = ({ session, profile, onClose, onWorkoutAdded }) => {
                             className="w-full bg-transparent text-5xl font-black text-center outline-none text-emerald-600"
                             min="1"
                         />
-
                         <div className="mt-4 pt-4 border-t border-emerald-200/50">
                             <p className="text-emerald-600/70 text-sm font-medium">Очікуваний результат:</p>
                             <div className="flex items-center justify-center gap-2">
