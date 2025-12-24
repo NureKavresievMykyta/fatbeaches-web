@@ -625,8 +625,8 @@ const ProfileSetup = ({ session, onComplete, onBack, initialData }) => {
 
         let bmr = (10 * w) + (6.25 * h) - (5 * a) + (formData.gender === 'male' ? 5 : -161);
         let calories = Math.round(bmr * 1.375);
-        if (formData.goal === 'lose weight') calories -= 500;
-        if (formData.goal === 'gain muscle') calories += 400;
+        if (formData.goal === 'lose_weight') calories -= 500;
+        if (formData.goal === 'gain_muscle') calories += 400;
 
         const updates = {
             user_id: session.user.id,
@@ -687,9 +687,9 @@ const ProfileSetup = ({ session, onComplete, onBack, initialData }) => {
                             <label className="text-xs font-bold text-slate-400 uppercase ml-2">Ціль</label>
                             <div className="relative">
                                 <select value={formData.goal} onChange={e => setFormData({ ...formData, goal: e.target.value })} className="w-full p-4 rounded-2xl bg-slate-50 outline-none font-medium text-slate-700 cursor-pointer border border-slate-100 appearance-none">
-                                    <option value="lose weight">Схуднути</option>
+                                    <option value="lose_weight">Схуднути</option>
                                     <option value="maintain">Форма</option>
-                                    <option value="gain muscle">Маса</option>
+                                    <option value="gain_muscle">Маса</option>
                                 </select>
                             </div>
                         </div>
