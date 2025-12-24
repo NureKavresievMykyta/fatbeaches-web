@@ -68,20 +68,27 @@ const FoodModal = ({ session, mealType, onClose, onFoodAdded }) => {
         return () => { isMounted = false; };
     }, [activeTab, search, session.user.id]);
 
-    const handleAddEntry = async () => {
-        if (!selectedFood) return;
+    const handleCreateFood = async (e) => {
+        e.preventDefault();
 
-        const { error } = await supabase.from('food_entries').insert({
-            user_id: session.user.id,
-            food_item_id: selectedFood.food_item_id,
-            meal_type: mealType,
-            quantity_grams: parseFloat(grams),
-            date_time: new Date().toISOString()
+        const isTrainer = role === 'trainer'; // 🔥 КЛЮЧ
+
+        const { error } = await supabase.from('food_items').insert({
+            name: newFood.name,
+            calories: parseFloat(newFood.calories),
+            proteins: parseFloat(newFood.proteins || 0),
+            fats: parseFloat(newFood.fats || 0),
+            carbohydrates: parseFloat(newFood.carbs || 0),
+            created_by_user_id: session.user.id,
+            is_custom_dish: true,
+
+            // 🔥 ГЛАВНАЯ ПРАВКА
+            is_public_plan: isTrainer
         });
 
         if (!error) {
-            onFoodAdded();
-            onClose();
+            setIsCreating(false);
+            setActiveTab(isTrainer ? 'public' : 'my');
         } else {
             alert(error.message);
         }
@@ -865,6 +872,7 @@ const Dashboard = ({ session, profile, role, onEditProfile }) => {
             {showFoodModal && (
                 <FoodModal
                     session={session}
+                    role={role}          // 🔥 ДОБАВЛЕНО
                     mealType={selectedMeal}
                     onClose={() => setShowFoodModal(false)}
                     onFoodAdded={() => setUpdateTrigger(t => t + 1)}
