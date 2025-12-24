@@ -609,9 +609,41 @@ const TrainerPending = () => (
 
 const ProfileSetup = ({ session, onComplete, onBack, initialData }) => {
     const [loading, setLoading] = useState(false);
-    const [formData, setFormData] = useState(initialData || {
+
+    const normalizeGoal = (g) => {
+        if (!g) return 'maintain';
+        const s = String(g).toLowerCase().trim();
+        const map = {
+            'lose weight': 'lose_weight',
+            'lose_weight': 'lose_weight',
+            'gain muscle': 'gain_muscle',
+            'gain_muscle': 'gain_muscle',
+            'maintain': 'maintain',
+            'форма': 'maintain' // fallback for localized
+        };
+        if (map[s]) return map[s];
+        return s.replace(/\s+/g, '_');
+    };
+
+    const initial = initialData ? {
+        ...initialData,
+        goal: normalizeGoal(initialData.goal)
+    } : {
         age: '', weight_kg: '', height_cm: '', gender: 'female', goal: 'maintain'
-    });
+    };
+
+    const [formData, setFormData] = useState(initial);
+
+    // Если initialData придёт позже — синхронизируем состояние формы
+    useEffect(() => {
+        if (initialData) {
+            setFormData(prev => ({
+                ...prev,
+                ...initialData,
+                goal: normalizeGoal(initialData.goal)
+            }));
+        }
+    }, [initialData]);
 
     const handleSubmit = async (e) => {
         e.preventDefault();
@@ -625,8 +657,10 @@ const ProfileSetup = ({ session, onComplete, onBack, initialData }) => {
 
         let bmr = (10 * w) + (6.25 * h) - (5 * a) + (formData.gender === 'male' ? 5 : -161);
         let calories = Math.round(bmr * 1.375);
-        if (formData.goal === 'lose_weight') calories -= 500;
-        if (formData.goal === 'gain_muscle') calories += 400;
+
+        const goal = normalizeGoal(formData.goal);
+        if (goal === 'lose_weight') calories -= 500;
+        if (goal === 'gain_muscle') calories += 400;
 
         const updates = {
             user_id: session.user.id,
@@ -634,10 +668,18 @@ const ProfileSetup = ({ session, onComplete, onBack, initialData }) => {
             weight_kg: w,
             height_cm: h,
             gender: formData.gender,
-            goal: formData.goal,
+            goal: goal,
             bmr: Math.round(bmr),
             daily_calories_goal: calories
         };
+
+        // Логируем перед отправкой — обязательно проверьте консоль браузера
+        // чтобы убедиться, что в поле goal уходит 'lose_weight' / 'gain_muscle' / 'maintain'
+        // (а не 'lose weight' или 'gain muscle').
+        // Это поможет точно увидеть причину ошибки на сервере.
+        // Удалите/закомментируйте лог в продакшене.
+        // eslint-disable-next-line no-console
+        console.log('Profile upsert payload:', updates);
 
         const { error } = await supabase.from('user_profiles').upsert(updates, { onConflict: 'user_id' });
 
