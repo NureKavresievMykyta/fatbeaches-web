@@ -7,6 +7,23 @@ import {
 import { supabase } from './supabase';
 
 const AdminDashboard = ({ onLogout }) => {
+    // --- НАСТРОЙКИ ТАБЛИЦ (Источник правды) ---
+    // Здесь мы определяем, как называются таблицы и их ID колонки
+    const getTableConfig = (tab) => {
+        switch (tab) {
+            case 'users':
+                return { table: 'users', idField: 'user_id' };
+            case 'foods':
+                return { table: 'food_items', idField: 'food_item_id' }; // Исправлено для продуктов
+            case 'workouts':
+                return { table: 'workout_items', idField: 'id' }; // Обычно id, если ошибка - поменяем на workout_item_id
+            case 'applications':
+                return { table: 'trainer_applications', idField: 'application_id' }; // Исправлено для заявок
+            default:
+                return { table: '', idField: 'id' };
+        }
+    };
+
     // --- ОСНОВНЫЕ СОСТОЯНИЯ ---
     const [activeTab, setActiveTab] = useState('overview');
     const [items, setItems] = useState([]);
@@ -35,7 +52,7 @@ const AdminDashboard = ({ onLogout }) => {
     const [userRole, setUserRole] = useState('');
     const [userStatus, setUserStatus] = useState('');
 
-    // Картинки-заглушки для визуала
+    // Картинки-заглушки
     const foodImages = [
         'https://images.unsplash.com/photo-1546069901-ba9599a7e63c?auto=format&fit=crop&w=800&q=80',
         'https://images.unsplash.com/photo-1550304943-4f24f54ddde9?auto=format&fit=crop&w=800&q=80',
@@ -77,7 +94,7 @@ const AdminDashboard = ({ onLogout }) => {
         }
     };
 
-    // --- ЗАГРУЗКА ДАННЫХ ДЛЯ ГЛАВНОГО ЭКРАНА ---
+    // --- ЗАГРУЗКА ДЛЯ DASHBOARD ---
     const fetchDashboardData = async () => {
         try {
             const { data, error } = await supabase
@@ -89,7 +106,6 @@ const AdminDashboard = ({ onLogout }) => {
             if (error) throw error;
 
             if (!data || data.length === 0) {
-                // Фейковые данные если база пустая
                 setDashboardDishes([
                     { id: 1, name: 'Демо: Стейк лосося', calories: 320, proteins: 25, fats: 15, carbohydrates: 5 },
                     { id: 2, name: 'Демо: Боул з кіноа', calories: 380, proteins: 12, fats: 10, carbohydrates: 45 },
@@ -104,7 +120,7 @@ const AdminDashboard = ({ onLogout }) => {
         }
     };
 
-    // --- ПОЛУЧЕНИЕ СПИСКОВ (ТАБЛИЦЫ) ---
+    // --- ПОЛУЧЕНИЕ СПИСКОВ ---
     const fetchData = async () => {
         setLoading(true);
         try {
@@ -138,7 +154,6 @@ const AdminDashboard = ({ onLogout }) => {
                 const { data: apps, error: appError } = await query;
                 if (appError) throw appError;
 
-                // Загружаем имена пользователей для заявок
                 const { data: users, error: userError } = await supabase
                     .from('users')
                     .select('user_id, email, name, first_name, last_name');
@@ -159,17 +174,24 @@ const AdminDashboard = ({ onLogout }) => {
         }
     };
 
-    // --- ЛОГИКА ЗАЯВОК (Схвалити/Відхилити) ---
+    // --- ЛОГИКА ЗАЯВОК ---
     const handleApplication = async (appId, userId, action) => {
+        // Защита: если appId не передан (например, база вернула null), не отправляем запрос
+        if (!appId) {
+            alert("Помилка: ID заявки не знайдено.");
+            return;
+        }
+
         const actionText = action === 'approved' ? 'СХВАЛИТИ' : 'ВІДХИЛИТИ';
         if (!window.confirm(`Ви впевнені, що хочете ${actionText} цю заявку?`)) return;
 
         try {
-            // Используем application_id
+            const { idField } = getTableConfig('applications'); // application_id
+
             const { error: appError } = await supabase
                 .from('trainer_applications')
                 .update({ status: action })
-                .eq('application_id', appId);
+                .eq(idField, appId);
 
             if (appError) throw appError;
 
@@ -182,9 +204,8 @@ const AdminDashboard = ({ onLogout }) => {
                 if (userError) alert('Увага: Заявку схвалено, але роль змінити не вдалося.');
             }
 
-            // Обновляем список локально
             if (appFilter === 'pending') {
-                setItems(prev => prev.filter(item => item.application_id !== appId));
+                setItems(prev => prev.filter(item => item[idField] !== appId));
             } else {
                 fetchData();
             }
@@ -228,35 +249,36 @@ const AdminDashboard = ({ onLogout }) => {
     }, [items, sortConfig, activeTab, usersLookup]);
 
     // --- УДАЛЕНИЕ (DELETE) ---
-    const handleDelete = async (id) => {
+    const handleDelete = async (idToDelete) => {
+        if (!idToDelete) {
+            alert("Помилка: Не вдалося визначити ID запису.");
+            return;
+        }
+
         if (!window.confirm('Видалити цей запис назавжди? Це незворотня дія.')) return;
 
         try {
-            const table = activeTab === 'foods' ? 'food_items' :
-                activeTab === 'workouts' ? 'workout_items' :
-                    activeTab === 'applications' ? 'trainer_applications' : 'users';
+            const { table, idField } = getTableConfig(activeTab);
 
-            const idColumn = activeTab === 'users' ? 'user_id' :
-                activeTab === 'applications' ? 'application_id' : 'id';
-
-            // Если удаляем пользователя, сначала чистим связанные данные (Каскадное удаление)
+            // Если удаляем пользователя - сначала чистим связанные данные
             if (activeTab === 'users') {
-                const { error: foodError } = await supabase.from('food_items').delete().eq('created_by', id);
+                const { error: foodError } = await supabase.from('food_items').delete().eq('created_by', idToDelete);
                 if (foodError) console.warn("Could not delete user foods:", foodError);
 
-                const { error: appError } = await supabase.from('trainer_applications').delete().eq('user_id', id);
+                const { error: appError } = await supabase.from('trainer_applications').delete().eq('user_id', idToDelete);
                 if (appError) console.warn("Could not delete user applications:", appError);
 
-                await supabase.from('user_profiles').delete().eq('user_id', id);
+                await supabase.from('user_profiles').delete().eq('user_id', idToDelete);
             }
 
             // Удаляем саму запись
-            const { error } = await supabase.from(table).delete().eq(idColumn, id);
+            const { error } = await supabase.from(table).delete().eq(idField, idToDelete);
 
             if (error) throw error;
 
-            // Обновляем интерфейс
-            setItems(items.filter(item => (item[idColumn] || item.id || item.application_id) !== id));
+            // Обновляем UI
+            setItems(items.filter(item => item[idField] !== idToDelete));
+
             if (activeTab === 'foods') fetchDashboardData();
             fetchStats();
 
@@ -268,15 +290,17 @@ const AdminDashboard = ({ onLogout }) => {
     // --- СОХРАНЕНИЕ (SAVE) ---
     const handleSaveItem = async () => {
         try {
-            const table = activeTab === 'foods' ? 'food_items' : 'workout_items';
+            const { table, idField } = getTableConfig(activeTab);
 
             if (activeTab === 'foods' && !formData.name) { alert('Введіть назву'); return; }
             if (activeTab === 'workouts' && !formData.name) { alert('Введіть назву'); return; }
 
             let result;
             if (editingItem) {
-                result = await supabase.from(table).update(formData).eq('id', editingItem.id).select();
+                // UPDATE: используем правильное имя поля ID
+                result = await supabase.from(table).update(formData).eq(idField, editingItem[idField]).select();
             } else {
+                // INSERT
                 result = await supabase.from(table).insert([formData]).select();
             }
 
@@ -284,7 +308,7 @@ const AdminDashboard = ({ onLogout }) => {
 
             const savedItem = result.data[0];
             if (editingItem) {
-                setItems(items.map(i => i.id === editingItem.id ? savedItem : i));
+                setItems(items.map(i => i[idField] === editingItem[idField] ? savedItem : i));
             } else {
                 setItems([...items, savedItem]);
             }
@@ -352,6 +376,13 @@ const AdminDashboard = ({ onLogout }) => {
         return searchString.includes(term);
     });
 
+    // Хелпер для получения ID из объекта строки, не зная точного имени поля заранее
+    const getItemId = (item) => {
+        const { idField } = getTableConfig(activeTab);
+        // Пробуем получить по конфигу, если нет - ищем id, если нет - fallback (для безопасности)
+        return item[idField] || item.id || item.user_id;
+    };
+
     return (
         <div className="min-h-screen bg-slate-50 flex flex-col font-sans text-slate-900">
             {/* HEADER */}
@@ -383,7 +414,7 @@ const AdminDashboard = ({ onLogout }) => {
                 {/* --- OVERVIEW TAB --- */}
                 {activeTab === 'overview' && (
                     <div className="animate-fade-in space-y-8">
-                        {/* 1. Stats */}
+                        {/* Stats */}
                         <div>
                             <h2 className="text-2xl font-bold text-slate-800 mb-6">Огляд системи</h2>
                             <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-6">
@@ -394,7 +425,7 @@ const AdminDashboard = ({ onLogout }) => {
                             </div>
                         </div>
 
-                        {/* 2. Grid Dashboard */}
+                        {/* Grid Dashboard */}
                         <div>
                             <div className="flex justify-between items-end mb-6">
                                 <div>
@@ -408,7 +439,7 @@ const AdminDashboard = ({ onLogout }) => {
 
                             <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-6">
                                 {dashboardDishes.map((dish, index) => (
-                                    <div key={dish.id || index} className="bg-white rounded-2xl p-3 shadow-sm border border-slate-100 hover:shadow-xl hover:-translate-y-1 transition-all duration-300 group cursor-pointer" onClick={() => setActiveTab('foods')}>
+                                    <div key={dish.food_item_id || dish.id || index} className="bg-white rounded-2xl p-3 shadow-sm border border-slate-100 hover:shadow-xl hover:-translate-y-1 transition-all duration-300 group cursor-pointer" onClick={() => setActiveTab('foods')}>
                                         <div className="h-48 bg-slate-200 rounded-xl relative overflow-hidden mb-4">
                                             <img
                                                 src={dish.image_url || foodImages[index % foodImages.length]}
@@ -504,9 +535,10 @@ const AdminDashboard = ({ onLogout }) => {
                                         <tbody className="divide-y divide-slate-100">
                                             {filteredItems.map((item) => {
                                                 const applicant = activeTab === 'applications' ? usersLookup[item.user_id] : null;
+                                                const itemId = getItemId(item); // Используем правильный ID
 
                                                 return (
-                                                    <tr key={item.id || item.user_id || item.application_id} className="hover:bg-slate-50/80 transition-colors group">
+                                                    <tr key={itemId} className="hover:bg-slate-50/80 transition-colors group">
 
                                                         <td className="p-5 align-top w-1/4">
                                                             {activeTab === 'applications' ? (
@@ -578,10 +610,11 @@ const AdminDashboard = ({ onLogout }) => {
                                                             <div className="flex justify-end gap-2">
                                                                 {activeTab === 'applications' && item.status === 'pending' && (
                                                                     <div className="flex flex-col gap-2">
-                                                                        <button onClick={() => handleApplication(item.application_id, item.user_id, 'approved')} className="flex items-center justify-center gap-2 px-4 py-2 bg-emerald-500 hover:bg-emerald-600 text-white rounded-xl text-xs font-bold transition-all shadow-md shadow-emerald-200 w-32">
+                                                                        {/* Передаем application_id или id (BigInt), а не user_id */}
+                                                                        <button onClick={() => handleApplication(itemId, item.user_id, 'approved')} className="flex items-center justify-center gap-2 px-4 py-2 bg-emerald-500 hover:bg-emerald-600 text-white rounded-xl text-xs font-bold transition-all shadow-md shadow-emerald-200 w-32">
                                                                             <Check size={14} /> СХВАЛИТИ
                                                                         </button>
-                                                                        <button onClick={() => handleApplication(item.application_id, item.user_id, 'rejected')} className="flex items-center justify-center gap-2 px-4 py-2 bg-white border border-red-200 text-red-600 hover:bg-red-50 rounded-xl text-xs font-bold transition-all w-32">
+                                                                        <button onClick={() => handleApplication(itemId, item.user_id, 'rejected')} className="flex items-center justify-center gap-2 px-4 py-2 bg-white border border-red-200 text-red-600 hover:bg-red-50 rounded-xl text-xs font-bold transition-all w-32">
                                                                             <XOctagon size={14} /> ВІДХИЛИТИ
                                                                         </button>
                                                                     </div>
@@ -596,13 +629,7 @@ const AdminDashboard = ({ onLogout }) => {
                                                                 )}
 
                                                                 <button
-                                                                    onClick={() => {
-                                                                        // ИСПРАВЛЕНИЕ: Выбираем правильный ID для удаления
-                                                                        const idToDelete = activeTab === 'applications' ? item.application_id :
-                                                                            activeTab === 'users' ? item.user_id :
-                                                                                item.id;
-                                                                        handleDelete(idToDelete);
-                                                                    }}
+                                                                    onClick={() => handleDelete(itemId)}
                                                                     className="p-2 bg-white border hover:border-red-300 hover:text-red-600 rounded-lg text-slate-400 transition-all"
                                                                 >
                                                                     <Trash2 size={16} />
