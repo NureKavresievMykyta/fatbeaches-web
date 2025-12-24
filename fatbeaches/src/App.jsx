@@ -5,7 +5,7 @@ import {
     Leaf, ArrowRight, User, Activity, Scale,
     Coffee, Utensils, Moon, Sun, Plus, LogOut, Loader2,
     Dumbbell, ShieldCheck, AlertCircle, ChevronLeft,
-    Settings, History, ChevronDown, Search, X, Globe, Lock
+    Settings, History, ChevronDown, Search, X, Globe, Lock, Database
 } from 'lucide-react';
 import AnalyticsView from './AnalyticsView';
 
@@ -31,9 +31,10 @@ const MealCard = ({ title, icon, calories, color, bg, onClick }) => {
     );
 };
 
-// --- MODIFIED COMPONENT: Receives role to decide visibility ---
+// --- FoodModal: Supports generic creation (mealType = null) ---
 const FoodModal = ({ session, mealType, onClose, onFoodAdded, role }) => {
-    const [activeTab, setActiveTab] = useState('my');
+    // Инициализируем activeTab на основе пропсов, чтобы не вызывать setState синхронно в эффекте
+    const [activeTab, setActiveTab] = useState(() => (!mealType && role === 'trainer') ? 'public' : 'my');
     const [search, setSearch] = useState('');
     const [foods, setFoods] = useState([]);
     const [loading, setLoading] = useState(false);
@@ -42,6 +43,9 @@ const FoodModal = ({ session, mealType, onClose, onFoodAdded, role }) => {
     const [isCreating, setIsCreating] = useState(false);
     const [newFood, setNewFood] = useState({ name: '', calories: '', proteins: '', fats: '', carbs: '' });
 
+    // Ранее здесь выполнялся эффект, который синхронно делал setActiveTab при изменении mealType/role.
+    // Теперь начальное значение задано выше — эффект удалён, чтобы избежать предупреждений о каскадных рендерах.
+
     useEffect(() => {
         let isMounted = true;
         const loadFoods = async () => {
@@ -49,10 +53,10 @@ const FoodModal = ({ session, mealType, onClose, onFoodAdded, role }) => {
             let query = supabase.from('food_items').select('*');
 
             if (activeTab === 'my') {
-                // Show user's private dishes
+                // Private dishes
                 query = query.eq('created_by_user_id', session.user.id);
             } else {
-                // Show public dishes (Trainer Base)
+                // Public dishes (Trainer Base)
                 query = query.eq('is_public_plan', true);
             }
 
@@ -72,7 +76,8 @@ const FoodModal = ({ session, mealType, onClose, onFoodAdded, role }) => {
     }, [activeTab, search, session.user.id]);
 
     const handleAddEntry = async () => {
-        if (!selectedFood) return;
+        // Якщо mealType немає, ми не можемо додати в щоденник (це просто перегляд бази)
+        if (!selectedFood || !mealType) return;
 
         const { error } = await supabase.from('food_entries').insert({
             user_id: session.user.id,
@@ -90,13 +95,12 @@ const FoodModal = ({ session, mealType, onClose, onFoodAdded, role }) => {
         }
     };
 
-    // --- LOGIC CHANGE HERE ---
     const handleCreateFood = async (e) => {
         e.preventDefault();
 
-        // LOGIC: If I am a trainer AND I am in the 'public' tab -> create a Public dish.
-        // Otherwise (I am a customer OR I am in 'my' tab) -> create a Private dish.
-        const shouldBePublic = role === 'trainer' && activeTab === 'public';
+        // LOGIC: Trainer creating in public tab OR creating via "Add to DB" button -> Public
+        // Otherwise -> Private
+        const shouldBePublic = (role === 'trainer' && activeTab === 'public') || (!mealType && role === 'trainer');
 
         const { error } = await supabase.from('food_items').insert({
             name: newFood.name,
@@ -106,20 +110,31 @@ const FoodModal = ({ session, mealType, onClose, onFoodAdded, role }) => {
             carbohydrates: parseFloat(newFood.carbs || 0),
             created_by_user_id: session.user.id,
             is_custom_dish: true,
-            is_public_plan: shouldBePublic // Dynamic value based on role
+            is_public_plan: shouldBePublic
         });
 
         if (!error) {
-            setIsCreating(false);
-            // Switch to the tab where the dish was created so the user sees it
-            setActiveTab(shouldBePublic ? 'public' : 'my');
-            setNewFood({ name: '', calories: '', proteins: '', fats: '', carbs: '' });
+            // Успішно створено
+            if (!mealType) {
+                // Якщо ми просто створювали страву в базу (не в обід), то просто закриваємо або скидаємо
+                alert("Страву успішно створено в базі!");
+                setIsCreating(false);
+                setNewFood({ name: '', calories: '', proteins: '', fats: '', carbs: '' });
+                // Можна оновити список
+                setActiveTab(shouldBePublic ? 'public' : 'my');
+            } else {
+                // Якщо ми були в контексті "Додати до обіду", то повертаємось до вибору, щоб юзер міг її додати
+                setIsCreating(false);
+                setActiveTab(shouldBePublic ? 'public' : 'my');
+                setNewFood({ name: '', calories: '', proteins: '', fats: '', carbs: '' });
+            }
         } else {
             alert(error.message);
         }
     };
 
     const getMealName = (type) => {
+        if (!type) return 'База страв'; // Fallback logic
         switch (type) {
             case 'breakfast': return 'Сніданок';
             case 'lunch': return 'Обід';
@@ -134,8 +149,13 @@ const FoodModal = ({ session, mealType, onClose, onFoodAdded, role }) => {
             <div className="bg-white w-full max-w-lg h-[90vh] sm:h-auto sm:max-h-[85vh] rounded-t-[2rem] sm:rounded-[2rem] shadow-2xl flex flex-col overflow-hidden">
                 <div className="bg-white p-6 border-b border-slate-100 flex justify-between items-center shrink-0">
                     <div>
-                        <h3 className="text-xl font-bold text-slate-800">Додати у {getMealName(mealType)}</h3>
-                        <p className="text-xs text-slate-400">Виберіть страву зі списку</p>
+                        {/* Змінюємо заголовок в залежності від режиму */}
+                        <h3 className="text-xl font-bold text-slate-800">
+                            {mealType ? `Додати у ${getMealName(mealType)}` : 'Керування стравами'}
+                        </h3>
+                        <p className="text-xs text-slate-400">
+                            {mealType ? 'Виберіть страву зі списку' : 'Перегляд та створення страв'}
+                        </p>
                     </div>
                     <button onClick={onClose} className="p-2 bg-slate-50 rounded-full text-slate-400 hover:bg-slate-100 transition">
                         <X size={20} />
@@ -179,9 +199,13 @@ const FoodModal = ({ session, mealType, onClose, onFoodAdded, role }) => {
                                                         <span className="text-xs text-slate-400">на 100г</span>
                                                     </div>
                                                 </div>
-                                                <div className="bg-emerald-50 p-2 rounded-lg text-emerald-600">
-                                                    <Plus size={18} />
-                                                </div>
+                                                {mealType ? (
+                                                    <div className="bg-emerald-50 p-2 rounded-lg text-emerald-600">
+                                                        <Plus size={18} />
+                                                    </div>
+                                                ) : (
+                                                    <div className="text-xs text-slate-400">Інфо</div>
+                                                )}
                                             </div>
                                         ))}
                                     </>
@@ -212,23 +236,29 @@ const FoodModal = ({ session, mealType, onClose, onFoodAdded, role }) => {
                                 </div>
                             </div>
 
-                            <div className="bg-slate-50 p-6 rounded-[1.5rem] border border-slate-100">
-                                <label className="block text-sm font-bold text-slate-700 mb-4 text-center uppercase tracking-wider">Вага порції (грами)</label>
-                                <div className="flex items-center justify-center gap-6">
-                                    <button onClick={() => setGrams(prev => Math.max(0, prev - 10))} className="w-10 h-10 rounded-full bg-white shadow-sm border border-slate-200 flex items-center justify-center text-slate-500 active:scale-90 transition text-xl font-bold">-</button>
-                                    <input
-                                        type="number"
-                                        value={grams}
-                                        onChange={(e) => setGrams(e.target.value)}
-                                        className="w-24 bg-transparent text-4xl font-extrabold text-center outline-none text-slate-800"
-                                    />
-                                    <button onClick={() => setGrams(prev => parseFloat(prev) + 10)} className="w-10 h-10 rounded-full bg-emerald-500 shadow-lg shadow-emerald-200 flex items-center justify-center text-white active:scale-90 transition text-xl font-bold">+</button>
+                            {/* Show entry calculator ONLY if we are in "Add to Meal" mode */}
+                            {mealType && (
+                                <div className="bg-slate-50 p-6 rounded-[1.5rem] border border-slate-100">
+                                    <label className="block text-sm font-bold text-slate-700 mb-4 text-center uppercase tracking-wider">Вага порції (грами)</label>
+                                    <div className="flex items-center justify-center gap-6">
+                                        <button onClick={() => setGrams(prev => Math.max(0, prev - 10))} className="w-10 h-10 rounded-full bg-white shadow-sm border border-slate-200 flex items-center justify-center text-slate-500 active:scale-90 transition text-xl font-bold">-</button>
+                                        <input
+                                            type="number"
+                                            value={grams}
+                                            onChange={(e) => setGrams(e.target.value)}
+                                            className="w-24 bg-transparent text-4xl font-extrabold text-center outline-none text-slate-800"
+                                        />
+                                        <button onClick={() => setGrams(prev => parseFloat(prev) + 10)} className="w-10 h-10 rounded-full bg-emerald-500 shadow-lg shadow-emerald-200 flex items-center justify-center text-white active:scale-90 transition text-xl font-bold">+</button>
+                                    </div>
                                 </div>
-                            </div>
+                            )}
                         </div>
-                        <button onClick={handleAddEntry} className="w-full bg-emerald-500 text-white py-4 rounded-2xl font-bold shadow-lg shadow-emerald-200 hover:bg-emerald-600 transition-all mt-6 text-lg">
-                            Додати у щоденник
-                        </button>
+
+                        {mealType && (
+                            <button onClick={handleAddEntry} className="w-full bg-emerald-500 text-white py-4 rounded-2xl font-bold shadow-lg shadow-emerald-200 hover:bg-emerald-600 transition-all mt-6 text-lg">
+                                Додати у щоденник
+                            </button>
+                        )}
                     </div>
                 )}
 
@@ -239,9 +269,8 @@ const FoodModal = ({ session, mealType, onClose, onFoodAdded, role }) => {
                             <h3 className="text-2xl font-bold text-slate-800">Створення страви</h3>
                         </div>
 
-                        {/* Візуальна підказка для користувача */}
-                        <div className={`mb-6 p-3 rounded-xl flex items-center gap-3 text-sm font-medium ${role === 'trainer' && activeTab === 'public' ? 'bg-blue-50 text-blue-700' : 'bg-slate-50 text-slate-600'}`}>
-                            {role === 'trainer' && activeTab === 'public' ? (
+                        <div className={`mb-6 p-3 rounded-xl flex items-center gap-3 text-sm font-medium ${((role === 'trainer' && activeTab === 'public') || (!mealType && role === 'trainer')) ? 'bg-blue-50 text-blue-700' : 'bg-slate-50 text-slate-600'}`}>
+                            {((role === 'trainer' && activeTab === 'public') || (!mealType && role === 'trainer')) ? (
                                 <>
                                     <Globe size={18} />
                                     <span>Це блюдо буде додано в <strong>Загальну Базу</strong> (видно всім).</span>
@@ -278,7 +307,7 @@ const FoodModal = ({ session, mealType, onClose, onFoodAdded, role }) => {
                                 </div>
                             </div>
                             <button className="w-full bg-emerald-500 text-white py-4 rounded-2xl font-bold shadow-lg shadow-emerald-200 hover:bg-emerald-600 transition-all mt-4 text-lg">
-                                Зберегти
+                                {mealType ? 'Зберегти' : 'Створити в базі'}
                             </button>
                         </form>
                     </div>
@@ -673,7 +702,6 @@ const ProfileSetup = ({ session, onComplete, onBack, initialData }) => {
     );
 };
 
-// --- MODIFIED COMPONENT: Receives role and passes to FoodModal ---
 const Dashboard = ({ session, profile, onEditProfile, role }) => {
     const [menuOpen, setMenuOpen] = useState(false);
     const [showFoodModal, setShowFoodModal] = useState(false);
@@ -853,6 +881,24 @@ const Dashboard = ({ session, profile, onEditProfile, role }) => {
                     <ArrowRight size={20} className="group-hover:translate-x-1 transition-transform" />
                 </button>
 
+                {role === 'trainer' && (
+                    <button
+                        onClick={() => { setSelectedMeal(null); setShowFoodModal(true); }}
+                        className="w-full bg-indigo-600 text-white p-6 rounded-[2rem] shadow-lg shadow-indigo-100 flex items-center justify-between group hover:bg-indigo-700 transition-all active:scale-95"
+                    >
+                        <div className="flex items-center gap-4 text-left">
+                            <div className="bg-white/20 p-3 rounded-2xl text-white shadow-inner">
+                                <Database size={28} />
+                            </div>
+                            <div>
+                                <h3 className="text-xl font-bold">База страв</h3>
+                                <p className="text-indigo-100 text-sm">Створити нову страву</p>
+                            </div>
+                        </div>
+                        <Plus size={20} className="group-hover:translate-x-1 transition-transform" />
+                    </button>
+                )}
+
                 <div className="space-y-4">
                     <h2 className="text-xl font-bold text-slate-800">Прийоми їжі</h2>
                     <div className="grid grid-cols-2 gap-4">
@@ -882,7 +928,7 @@ const Dashboard = ({ session, profile, onEditProfile, role }) => {
             {showFoodModal && (
                 <FoodModal
                     session={session}
-                    role={role} // PASSED ROLE TO MODAL
+                    role={role}
                     mealType={selectedMeal}
                     onClose={() => setShowFoodModal(false)}
                     onFoodAdded={() => setUpdateTrigger(t => t + 1)}
@@ -1013,12 +1059,6 @@ function App() {
         if (trainerApp.status === 'pending') {
             return <TrainerPending />;
         }
-        // Trainer accesses the dashboard, but needs profile set up if using features.
-        // Assuming trainer also has user_profile for personal stats, or just uses it to add content.
-        // For simplicity, reusing Dashboard for trainer to manage content/see stats (or their own stats).
-        // If trainer needs profile setup logic:
-        // if (!profile) return <ProfileSetup ... />
-        // For now, let's let trainer through to Dashboard to use the Add Food feature.
         return <Dashboard session={session} profile={profile} role={role} onEditProfile={() => setIsEditingProfile(true)} />;
     }
 
