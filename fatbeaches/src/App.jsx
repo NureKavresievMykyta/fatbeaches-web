@@ -273,27 +273,44 @@ const WORKOUT_TYPES = {
 
 const WorkoutModal = ({ session, profile, onClose, onWorkoutAdded }) => {
     const [duration, setDuration] = useState(30);
-    const [selectedType, setSelectedType] = useState('running');
+    const [activities, setActivities] = useState([]); // Список активностей з БД
+    const [selectedActivityId, setSelectedActivityId] = useState(''); // ID вибраної активності
     const [loading, setLoading] = useState(false);
 
-    const MET_VALUES = {
-        running: 8.0,
-        walking: 3.5,
-        cycling: 6.0,
-        strength: 5.0,
-        yoga: 2.5
-    };
+    // Завантаження активностей з бази даних
+    useEffect(() => {
+        const fetchActivities = async () => {
+            const { data, error } = await supabase
+                .from('workout_items')
+                .select('workout_item_id, name, calories_per_hour')
+                .eq('is_public_plan', true); // (Опціонально) Тільки публічні, або прибери цей фільтр
 
-    // Функція розрахунку, яка викликається при кожному рендері
+            if (!error && data && data.length > 0) {
+                setActivities(data);
+                setSelectedActivityId(data[0].workout_item_id); // Вибираємо перший елемент за замовчуванням
+            }
+        };
+        fetchActivities();
+    }, []);
+
+    // Функція розрахунку калорій на основі даних з БД
     const calculateBurned = () => {
-        const weight = profile?.weight_kg || 70;
-        const met = MET_VALUES[selectedType] || 3.0;
-        return Math.round((met * weight * 3.5) / 200 * duration);
+        // Знаходимо вибрану активність у списку
+        const activity = activities.find(a => a.workout_item_id == selectedActivityId);
+
+        if (!activity || !activity.calories_per_hour) return 0;
+
+        // Формула: (Калорії за годину / 60) * тривалість
+        return Math.round((activity.calories_per_hour / 60) * duration);
     };
 
     const handleSave = async () => {
         if (!duration || duration <= 0) {
             alert("Будь ласка, введіть тривалість");
+            return;
+        }
+        if (!selectedActivityId) {
+            alert("Будь ласка, виберіть активність");
             return;
         }
 
@@ -304,7 +321,7 @@ const WorkoutModal = ({ session, profile, onClose, onWorkoutAdded }) => {
             .from('workout_entries')
             .insert({
                 user_id: session.user.id,
-                workout_item_id: WORKOUT_TYPES[selectedType], // Відправляємо число ID
+                [cite_start]workout_item_id: selectedActivityId, // Використовуємо ID з бази [cite: 45]
                 duration_minutes: parseInt(duration, 10),
                 calories_burned_estimated: burned,
                 date_time: new Date().toISOString()
@@ -332,17 +349,23 @@ const WorkoutModal = ({ session, profile, onClose, onWorkoutAdded }) => {
                 <div className="space-y-6">
                     <div>
                         <label className="text-xs font-bold text-slate-400 uppercase ml-1 tracking-wider">Вид активності</label>
-                        <select
-                            value={selectedType}
-                            onChange={(e) => setSelectedType(e.target.value)}
-                            className="w-full mt-2 p-4 bg-slate-50 rounded-2xl border border-slate-100 outline-none focus:border-emerald-300 transition-all cursor-pointer appearance-none"
-                        >
-                            <option value="running">🏃 Біг</option>
-                            <option value="walking">🚶 Ходьба</option>
-                            <option value="cycling">🚴 Велосипед</option>
-                            <option value="strength">💪 Силове тренування</option>
-                            <option value="yoga">🧘 Йога</option>
-                        </select>
+                        {activities.length > 0 ? (
+                            <select
+                                value={selectedActivityId}
+                                onChange={(e) => setSelectedActivityId(e.target.value)}
+                                className="w-full mt-2 p-4 bg-slate-50 rounded-2xl border border-slate-100 outline-none focus:border-emerald-300 transition-all cursor-pointer appearance-none text-slate-700 font-medium"
+                            >
+                                {activities.map((activity) => (
+                                    <option key={activity.workout_item_id} value={activity.workout_item_id}>
+                                        {activity.name} (~{activity.calories_per_hour} ккал/год)
+                                    </option>
+                                ))}
+                            </select>
+                        ) : (
+                            <div className="mt-2 p-4 bg-slate-50 rounded-2xl text-slate-400 text-sm">
+                                Завантаження списку вправ...
+                            </div>
+                        )}
                     </div>
 
                     {/* БЛОК АВТОМАТИЧНОГО РОЗРАХУНКУ */}
@@ -372,8 +395,8 @@ const WorkoutModal = ({ session, profile, onClose, onWorkoutAdded }) => {
 
                     <button
                         onClick={handleSave}
-                        disabled={loading}
-                        className="w-full bg-emerald-500 hover:bg-emerald-600 text-white py-5 rounded-[1.5rem] font-bold shadow-lg shadow-emerald-200 transition-all active:scale-[0.98] flex justify-center items-center gap-2"
+                        disabled={loading || activities.length === 0}
+                        className="w-full bg-emerald-500 hover:bg-emerald-600 text-white py-5 rounded-[1.5rem] font-bold shadow-lg shadow-emerald-200 transition-all active:scale-[0.98] flex justify-center items-center gap-2 disabled:opacity-50 disabled:cursor-not-allowed"
                     >
                         {loading ? <Loader2 className="animate-spin" /> : 'Зберегти тренування'}
                     </button>
