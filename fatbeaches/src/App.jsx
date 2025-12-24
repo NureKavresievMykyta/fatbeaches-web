@@ -644,7 +644,7 @@ const ProfileSetup = ({ session, onComplete, onBack, initialData }) => {
     );
 };
 
-const Dashboard = ({ session, profile, onEditProfile }) => {
+const Dashboard = ({ session, profile, role, onEditProfile }) => {
     const [menuOpen, setMenuOpen] = useState(false);
     const [showFoodModal, setShowFoodModal] = useState(false);
     const [showWorkoutModal, setShowWorkoutModal] = useState(false);
@@ -719,6 +719,14 @@ const Dashboard = ({ session, profile, onEditProfile }) => {
     const remainingCalories = Math.max(0, dailyGoal - netCalories);
     const progressPercent = Math.round((netCalories / dailyGoal) * 100);
 
+    const getRoleLabel = () => {
+        if (role === 'trainer') return { text: 'Тренер', class: 'bg-blue-100 text-blue-700 border-blue-200' };
+        if (role === 'admin') return { text: 'Адмін', class: 'bg-purple-100 text-purple-700 border-purple-200' };
+        return { text: 'Клієнт', class: 'bg-emerald-100 text-emerald-700 border-emerald-200' };
+    };
+
+    const roleBadge = getRoleLabel();
+
     return (
         <div className="min-h-screen bg-slate-50 pb-24 font-sans animate-fade-in">
             <header className="bg-white px-6 pt-6 pb-8 rounded-b-[3rem] shadow-sm mb-8 relative z-20">
@@ -728,7 +736,12 @@ const Dashboard = ({ session, profile, onEditProfile }) => {
                             <User size={20} />
                         </div>
                         <div>
-                            <h1 className="text-lg font-bold text-slate-800 leading-tight">Привіт!</h1>
+                            <div className="flex items-center gap-2">
+                                <h1 className="text-lg font-bold text-slate-800 leading-tight">Привіт!</h1>
+                                <span className={`px-2 py-0.5 rounded-md text-[10px] font-black uppercase tracking-wide border ${roleBadge.class}`}>
+                                    {roleBadge.text}
+                                </span>
+                            </div>
                             <p className="text-xs text-slate-400 font-medium">Гарного дня</p>
                         </div>
                     </div>
@@ -982,7 +995,8 @@ function App() {
         if (trainerApp.status === 'pending') {
             return <TrainerPending />;
         }
-        return <div className="p-10 text-center">Тренерська панель (В розробці)</div>;
+        // Если тренер одобрен, показываем Dashboard с ролью тренера
+        return <Dashboard session={session} profile={profile} role={role} onEditProfile={() => setIsEditingProfile(true)} />;
     }
 
     if (isEditingProfile) {
@@ -999,7 +1013,7 @@ function App() {
         return <ProfileSetup session={session} onBack={handleBackToRole} onComplete={() => checkUserStatus(session.user.id)} />;
     }
 
-    return <Dashboard session={session} profile={profile} onEditProfile={() => setIsEditingProfile(true)} />;
+    return <Dashboard session={session} profile={profile} role={role} onEditProfile={() => setIsEditingProfile(true)} />;
 }
 
 export default App;
