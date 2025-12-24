@@ -5,7 +5,7 @@ import {
     Leaf, ArrowRight, User, Activity, Scale,
     Coffee, Utensils, Moon, Sun, Plus, LogOut, Loader2,
     Dumbbell, ShieldCheck, AlertCircle, ChevronLeft,
-    Settings, History, ChevronDown, Search, X
+    Settings, History, ChevronDown, Search, X, Globe, Lock
 } from 'lucide-react';
 import AnalyticsView from './AnalyticsView';
 
@@ -31,7 +31,8 @@ const MealCard = ({ title, icon, calories, color, bg, onClick }) => {
     );
 };
 
-const FoodModal = ({ session, mealType, onClose, onFoodAdded }) => {
+// --- MODIFIED COMPONENT: Receives role to decide visibility ---
+const FoodModal = ({ session, mealType, onClose, onFoodAdded, role }) => {
     const [activeTab, setActiveTab] = useState('my');
     const [search, setSearch] = useState('');
     const [foods, setFoods] = useState([]);
@@ -48,8 +49,10 @@ const FoodModal = ({ session, mealType, onClose, onFoodAdded }) => {
             let query = supabase.from('food_items').select('*');
 
             if (activeTab === 'my') {
+                // Show user's private dishes
                 query = query.eq('created_by_user_id', session.user.id);
             } else {
+                // Show public dishes (Trainer Base)
                 query = query.eq('is_public_plan', true);
             }
 
@@ -87,8 +90,14 @@ const FoodModal = ({ session, mealType, onClose, onFoodAdded }) => {
         }
     };
 
+    // --- LOGIC CHANGE HERE ---
     const handleCreateFood = async (e) => {
         e.preventDefault();
+
+        // LOGIC: If I am a trainer AND I am in the 'public' tab -> create a Public dish.
+        // Otherwise (I am a customer OR I am in 'my' tab) -> create a Private dish.
+        const shouldBePublic = role === 'trainer' && activeTab === 'public';
+
         const { error } = await supabase.from('food_items').insert({
             name: newFood.name,
             calories: parseFloat(newFood.calories),
@@ -97,12 +106,14 @@ const FoodModal = ({ session, mealType, onClose, onFoodAdded }) => {
             carbohydrates: parseFloat(newFood.carbs || 0),
             created_by_user_id: session.user.id,
             is_custom_dish: true,
-            is_public_plan: false
+            is_public_plan: shouldBePublic // Dynamic value based on role
         });
 
         if (!error) {
             setIsCreating(false);
-            setActiveTab('my');
+            // Switch to the tab where the dish was created so the user sees it
+            setActiveTab(shouldBePublic ? 'public' : 'my');
+            setNewFood({ name: '', calories: '', proteins: '', fats: '', carbs: '' });
         } else {
             alert(error.message);
         }
@@ -224,7 +235,25 @@ const FoodModal = ({ session, mealType, onClose, onFoodAdded }) => {
                 {isCreating && (
                     <div className="p-6 flex-1 overflow-y-auto bg-white">
                         <button onClick={() => setIsCreating(false)} className="flex items-center text-slate-400 text-sm mb-6 hover:text-slate-600"><ChevronLeft size={16} className="mr-1" /> Назад</button>
-                        <h3 className="text-2xl font-bold text-slate-800 mb-6">Створення страви</h3>
+                        <div className="flex justify-between items-center mb-6">
+                            <h3 className="text-2xl font-bold text-slate-800">Створення страви</h3>
+                        </div>
+
+                        {/* Візуальна підказка для користувача */}
+                        <div className={`mb-6 p-3 rounded-xl flex items-center gap-3 text-sm font-medium ${role === 'trainer' && activeTab === 'public' ? 'bg-blue-50 text-blue-700' : 'bg-slate-50 text-slate-600'}`}>
+                            {role === 'trainer' && activeTab === 'public' ? (
+                                <>
+                                    <Globe size={18} />
+                                    <span>Це блюдо буде додано в <strong>Загальну Базу</strong> (видно всім).</span>
+                                </>
+                            ) : (
+                                <>
+                                    <Lock size={18} />
+                                    <span>Це блюдо буде <strong>Приватним</strong> (видно тільки вам).</span>
+                                </>
+                            )}
+                        </div>
+
                         <form onSubmit={handleCreateFood} className="space-y-5">
                             <div>
                                 <label className="text-xs font-bold text-slate-400 uppercase ml-1">Назва продукту</label>
@@ -644,7 +673,8 @@ const ProfileSetup = ({ session, onComplete, onBack, initialData }) => {
     );
 };
 
-const Dashboard = ({ session, profile, onEditProfile }) => {
+// --- MODIFIED COMPONENT: Receives role and passes to FoodModal ---
+const Dashboard = ({ session, profile, onEditProfile, role }) => {
     const [menuOpen, setMenuOpen] = useState(false);
     const [showFoodModal, setShowFoodModal] = useState(false);
     const [showWorkoutModal, setShowWorkoutModal] = useState(false);
@@ -852,6 +882,7 @@ const Dashboard = ({ session, profile, onEditProfile }) => {
             {showFoodModal && (
                 <FoodModal
                     session={session}
+                    role={role} // PASSED ROLE TO MODAL
                     mealType={selectedMeal}
                     onClose={() => setShowFoodModal(false)}
                     onFoodAdded={() => setUpdateTrigger(t => t + 1)}
@@ -982,7 +1013,13 @@ function App() {
         if (trainerApp.status === 'pending') {
             return <TrainerPending />;
         }
-        return <div className="p-10 text-center">Тренерська панель (В розробці)</div>;
+        // Trainer accesses the dashboard, but needs profile set up if using features.
+        // Assuming trainer also has user_profile for personal stats, or just uses it to add content.
+        // For simplicity, reusing Dashboard for trainer to manage content/see stats (or their own stats).
+        // If trainer needs profile setup logic:
+        // if (!profile) return <ProfileSetup ... />
+        // For now, let's let trainer through to Dashboard to use the Add Food feature.
+        return <Dashboard session={session} profile={profile} role={role} onEditProfile={() => setIsEditingProfile(true)} />;
     }
 
     if (isEditingProfile) {
@@ -999,7 +1036,7 @@ function App() {
         return <ProfileSetup session={session} onBack={handleBackToRole} onComplete={() => checkUserStatus(session.user.id)} />;
     }
 
-    return <Dashboard session={session} profile={profile} onEditProfile={() => setIsEditingProfile(true)} />;
+    return <Dashboard session={session} profile={profile} role={role} onEditProfile={() => setIsEditingProfile(true)} />;
 }
 
 export default App;
