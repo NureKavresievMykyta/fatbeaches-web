@@ -7,24 +7,24 @@ import {
 import { supabase } from './supabase';
 
 const AdminDashboard = ({ onLogout }) => {
-    // --- НАСТРОЙКИ ТАБЛИЦ (Источник правды) ---
-    // Здесь мы определяем, как называются таблицы и их ID колонки
+    // --- КОНФИГУРАЦИЯ ТАБЛИЦ ---
+    // Здесь задаем названия таблиц и их ID полей, чтобы избежать ошибок "column does not exist"
     const getTableConfig = (tab) => {
         switch (tab) {
             case 'users':
                 return { table: 'users', idField: 'user_id' };
             case 'foods':
-                return { table: 'food_items', idField: 'food_item_id' }; // Исправлено для продуктов
+                return { table: 'food_items', idField: 'food_item_id' }; // Исправлено (было id)
             case 'workouts':
-                return { table: 'workout_items', idField: 'id' }; // Обычно id, если ошибка - поменяем на workout_item_id
+                return { table: 'workout_items', idField: 'id' }; // Обычно id, если будет ошибка - поменяем на workout_item_id
             case 'applications':
-                return { table: 'trainer_applications', idField: 'application_id' }; // Исправлено для заявок
+                return { table: 'trainer_applications', idField: 'application_id' }; // Исправлено (было id)
             default:
                 return { table: '', idField: 'id' };
         }
     };
 
-    // --- ОСНОВНЫЕ СОСТОЯНИЯ ---
+    // --- STATE ---
     const [activeTab, setActiveTab] = useState('overview');
     const [items, setItems] = useState([]);
     const [dashboardDishes, setDashboardDishes] = useState([]);
@@ -33,13 +33,13 @@ const AdminDashboard = ({ onLogout }) => {
     const [searchTerm, setSearchTerm] = useState('');
     const [sortConfig, setSortConfig] = useState({ key: null, direction: 'asc' });
 
-    // Статистика
+    // Stats
     const [stats, setStats] = useState({ users: 0, foods: 0, workouts: 0, pendingTrainers: 0 });
 
-    // Фильтр для заявок
+    // Application Filter
     const [appFilter, setAppFilter] = useState('pending');
 
-    // Модальные окна
+    // Modals
     const [isModalOpen, setIsModalOpen] = useState(false);
     const [editingItem, setEditingItem] = useState(null);
     const [formData, setFormData] = useState({});
@@ -52,7 +52,7 @@ const AdminDashboard = ({ onLogout }) => {
     const [userRole, setUserRole] = useState('');
     const [userStatus, setUserStatus] = useState('');
 
-    // Картинки-заглушки
+    // --- IMAGES ---
     const foodImages = [
         'https://images.unsplash.com/photo-1546069901-ba9599a7e63c?auto=format&fit=crop&w=800&q=80',
         'https://images.unsplash.com/photo-1550304943-4f24f54ddde9?auto=format&fit=crop&w=800&q=80',
@@ -60,7 +60,7 @@ const AdminDashboard = ({ onLogout }) => {
         'https://images.unsplash.com/photo-1519708227418-c8fd9a32b7a2?auto=format&fit=crop&w=800&q=80'
     ];
 
-    // --- ЭФФЕКТ ЗАГРУЗКИ ---
+    // --- EFFECTS ---
     useEffect(() => {
         if (activeTab !== 'overview') {
             setItems([]);
@@ -73,7 +73,7 @@ const AdminDashboard = ({ onLogout }) => {
         // eslint-disable-next-line react-hooks/exhaustive-deps
     }, [activeTab, appFilter]);
 
-    // --- ПОЛУЧЕНИЕ СТАТИСТИКИ ---
+    // --- FETCH STATS ---
     const fetchStats = async () => {
         try {
             const [users, foods, workouts, apps] = await Promise.all([
@@ -94,7 +94,7 @@ const AdminDashboard = ({ onLogout }) => {
         }
     };
 
-    // --- ЗАГРУЗКА ДЛЯ DASHBOARD ---
+    // --- FETCH DASHBOARD ---
     const fetchDashboardData = async () => {
         try {
             const { data, error } = await supabase
@@ -120,7 +120,7 @@ const AdminDashboard = ({ onLogout }) => {
         }
     };
 
-    // --- ПОЛУЧЕНИЕ СПИСКОВ ---
+    // --- FETCH DATA LISTS ---
     const fetchData = async () => {
         setLoading(true);
         try {
@@ -174,9 +174,8 @@ const AdminDashboard = ({ onLogout }) => {
         }
     };
 
-    // --- ЛОГИКА ЗАЯВОК ---
+    // --- HANDLE APPLICATION (APPROVE/REJECT) ---
     const handleApplication = async (appId, userId, action) => {
-        // Защита: если appId не передан (например, база вернула null), не отправляем запрос
         if (!appId) {
             alert("Помилка: ID заявки не знайдено.");
             return;
@@ -216,7 +215,7 @@ const AdminDashboard = ({ onLogout }) => {
         }
     };
 
-    // --- СОРТИРОВКА ---
+    // --- SORTING ---
     const handleSort = (key) => {
         let direction = 'asc';
         if (sortConfig.key === key && sortConfig.direction === 'asc') direction = 'desc';
@@ -248,7 +247,7 @@ const AdminDashboard = ({ onLogout }) => {
         return sortableItems;
     }, [items, sortConfig, activeTab, usersLookup]);
 
-    // --- УДАЛЕНИЕ (DELETE) ---
+    // --- DELETE ITEM ---
     const handleDelete = async (idToDelete) => {
         if (!idToDelete) {
             alert("Помилка: Не вдалося визначити ID запису.");
@@ -260,7 +259,7 @@ const AdminDashboard = ({ onLogout }) => {
         try {
             const { table, idField } = getTableConfig(activeTab);
 
-            // Если удаляем пользователя - сначала чистим связанные данные
+            // Каскадное удаление для пользователей
             if (activeTab === 'users') {
                 const { error: foodError } = await supabase.from('food_items').delete().eq('created_by', idToDelete);
                 if (foodError) console.warn("Could not delete user foods:", foodError);
@@ -271,7 +270,7 @@ const AdminDashboard = ({ onLogout }) => {
                 await supabase.from('user_profiles').delete().eq('user_id', idToDelete);
             }
 
-            // Удаляем саму запись
+            // Удаляем запись
             const { error } = await supabase.from(table).delete().eq(idField, idToDelete);
 
             if (error) throw error;
@@ -287,7 +286,7 @@ const AdminDashboard = ({ onLogout }) => {
         }
     };
 
-    // --- СОХРАНЕНИЕ (SAVE) ---
+    // --- SAVE ITEM (ADD/EDIT) ---
     const handleSaveItem = async () => {
         try {
             const { table, idField } = getTableConfig(activeTab);
@@ -295,13 +294,42 @@ const AdminDashboard = ({ onLogout }) => {
             if (activeTab === 'foods' && !formData.name) { alert('Введіть назву'); return; }
             if (activeTab === 'workouts' && !formData.name) { alert('Введіть назву'); return; }
 
+            // Подготавливаем данные для отправки
+            let dataToSend = {};
+
+            if (activeTab === 'foods') {
+                dataToSend = {
+                    name: formData.name,
+                    calories: formData.calories || 0,
+                    proteins: formData.proteins || 0,
+                    fats: formData.fats || 0,
+                    carbohydrates: formData.carbohydrates || 0
+                    // created_by обычно ставится на бэкенде или берется из сессии, если нужно
+                };
+            } else if (activeTab === 'workouts') {
+                // ИСПРАВЛЕНИЕ: Для workout_items отправляем ТОЛЬКО name.
+                // Калории находятся в workout_entries, а не здесь.
+                dataToSend = {
+                    name: formData.name
+                };
+            } else {
+                dataToSend = { ...formData };
+            }
+
             let result;
             if (editingItem) {
-                // UPDATE: используем правильное имя поля ID
-                result = await supabase.from(table).update(formData).eq(idField, editingItem[idField]).select();
+                // UPDATE
+                result = await supabase
+                    .from(table)
+                    .update(dataToSend)
+                    .eq(idField, editingItem[idField])
+                    .select();
             } else {
                 // INSERT
-                result = await supabase.from(table).insert([formData]).select();
+                result = await supabase
+                    .from(table)
+                    .insert([dataToSend])
+                    .select();
             }
 
             if (result.error) throw result.error;
@@ -315,16 +343,20 @@ const AdminDashboard = ({ onLogout }) => {
             setIsModalOpen(false);
             fetchStats();
             if (activeTab === 'foods') fetchDashboardData();
-        } catch (error) { alert(error.message); }
+        } catch (error) {
+            console.error(error);
+            alert('Помилка збереження: ' + error.message);
+        }
     };
 
     const openModal = (item = null) => {
         setEditingItem(item);
-        setFormData(item || {});
+        // Копируем данные или создаем пустой объект
+        setFormData(item ? { ...item } : {});
         setIsModalOpen(true);
     };
 
-    // --- ПРОФИЛЬ ПОЛЬЗОВАТЕЛЯ ---
+    // --- VIEW/EDIT USER ---
     const handleViewUser = async (user) => {
         setSelectedUser(user);
         setUserRole(user.role || 'customer');
@@ -352,6 +384,7 @@ const AdminDashboard = ({ onLogout }) => {
         } catch (error) { alert(error.message); }
     };
 
+    // --- HELPERS ---
     function getUserDisplayName(user) {
         if (!user) return 'Користувач (ID...)';
         if (user.name) return user.name;
@@ -359,6 +392,11 @@ const AdminDashboard = ({ onLogout }) => {
         if (user.full_name) return user.full_name;
         if (user.email) return user.email;
         return `ID: ${user.user_id?.substring(0, 6)}`;
+    };
+
+    const getItemId = (item) => {
+        const { idField } = getTableConfig(activeTab);
+        return item[idField] || item.id || item.user_id;
     };
 
     const filteredItems = sortedItems.filter(item => {
@@ -375,13 +413,6 @@ const AdminDashboard = ({ onLogout }) => {
 
         return searchString.includes(term);
     });
-
-    // Хелпер для получения ID из объекта строки, не зная точного имени поля заранее
-    const getItemId = (item) => {
-        const { idField } = getTableConfig(activeTab);
-        // Пробуем получить по конфигу, если нет - ищем id, если нет - fallback (для безопасности)
-        return item[idField] || item.id || item.user_id;
-    };
 
     return (
         <div className="min-h-screen bg-slate-50 flex flex-col font-sans text-slate-900">
@@ -535,7 +566,7 @@ const AdminDashboard = ({ onLogout }) => {
                                         <tbody className="divide-y divide-slate-100">
                                             {filteredItems.map((item) => {
                                                 const applicant = activeTab === 'applications' ? usersLookup[item.user_id] : null;
-                                                const itemId = getItemId(item); // Используем правильный ID
+                                                const itemId = getItemId(item);
 
                                                 return (
                                                     <tr key={itemId} className="hover:bg-slate-50/80 transition-colors group">
@@ -591,10 +622,9 @@ const AdminDashboard = ({ onLogout }) => {
                                                             )}
 
                                                             {activeTab === 'workouts' && (
-                                                                <div className="flex flex-wrap gap-2 text-xs font-bold">
-                                                                    <span className="bg-purple-50 text-purple-600 px-2 py-1 rounded-md border border-purple-100">
-                                                                        {item.calories_burned_estimated} ккал/год
-                                                                    </span>
+                                                                <div className="flex flex-wrap gap-2 text-xs font-bold text-slate-400">
+                                                                    {/* Мы не показываем калории для типов тренировок, так как они в entries */}
+                                                                    Тип тренування
                                                                 </div>
                                                             )}
 
@@ -610,7 +640,6 @@ const AdminDashboard = ({ onLogout }) => {
                                                             <div className="flex justify-end gap-2">
                                                                 {activeTab === 'applications' && item.status === 'pending' && (
                                                                     <div className="flex flex-col gap-2">
-                                                                        {/* Передаем application_id или id (BigInt), а не user_id */}
                                                                         <button onClick={() => handleApplication(itemId, item.user_id, 'approved')} className="flex items-center justify-center gap-2 px-4 py-2 bg-emerald-500 hover:bg-emerald-600 text-white rounded-xl text-xs font-bold transition-all shadow-md shadow-emerald-200 w-32">
                                                                             <Check size={14} /> СХВАЛИТИ
                                                                         </button>
@@ -675,16 +704,10 @@ const AdminDashboard = ({ onLogout }) => {
                                 </div>
                             )}
 
+                            {/* ИСПРАВЛЕНИЕ: Убрали поле ввода калорий для тренировок, так как такой колонки нет в workout_items */}
                             {activeTab === 'workouts' && (
-                                <div>
-                                    <label className="text-xs font-bold text-slate-500">Калорії (за годину)</label>
-                                    <input
-                                        type="number"
-                                        className="w-full p-3 bg-slate-50 rounded-xl outline-none"
-                                        placeholder="Наприклад: 500"
-                                        value={formData.calories_burned_estimated || ''}
-                                        onChange={e => setFormData({ ...formData, calories_burned_estimated: e.target.value })}
-                                    />
+                                <div className="p-4 bg-slate-50 rounded-xl text-sm text-slate-500 italic">
+                                    Для типів тренувань додається тільки назва. Калорії розраховуються індивідуально в журналі користувача.
                                 </div>
                             )}
 
