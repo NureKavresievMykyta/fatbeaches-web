@@ -104,12 +104,12 @@ const FoodModal = ({ session, mealType, onClose, onFoodAdded }) => {
             carbohydrates: parseFloat(newFood.carbs || 0),
             created_by_user_id: session.user.id,
             is_custom_dish: true,
-            is_public_plan: false
+            is_public_plan: role === 'trainer'
         });
 
         if (!error) {
             setIsCreating(false);
-            setActiveTab('my');
+            setActiveTab(role === 'trainer' ? 'public' : 'my');
         } else {
             alert(error.message);
         }
