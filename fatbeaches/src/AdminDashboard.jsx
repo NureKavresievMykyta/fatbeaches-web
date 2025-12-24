@@ -35,7 +35,7 @@ const AdminDashboard = ({ onLogout }) => {
     const [userRole, setUserRole] = useState('');
     const [userStatus, setUserStatus] = useState('');
 
-    // Картинки-заглушки
+    // Картинки-заглушки для визуала
     const foodImages = [
         'https://images.unsplash.com/photo-1546069901-ba9599a7e63c?auto=format&fit=crop&w=800&q=80',
         'https://images.unsplash.com/photo-1550304943-4f24f54ddde9?auto=format&fit=crop&w=800&q=80',
@@ -77,7 +77,7 @@ const AdminDashboard = ({ onLogout }) => {
         }
     };
 
-    // --- ЗАГРУЗКА ДЛЯ DASHBOARD ---
+    // --- ЗАГРУЗКА ДАННЫХ ДЛЯ ГЛАВНОГО ЭКРАНА ---
     const fetchDashboardData = async () => {
         try {
             const { data, error } = await supabase
@@ -104,7 +104,7 @@ const AdminDashboard = ({ onLogout }) => {
         }
     };
 
-    // --- ПОЛУЧЕНИЕ СПИСКОВ ---
+    // --- ПОЛУЧЕНИЕ СПИСКОВ (ТАБЛИЦЫ) ---
     const fetchData = async () => {
         setLoading(true);
         try {
@@ -138,6 +138,7 @@ const AdminDashboard = ({ onLogout }) => {
                 const { data: apps, error: appError } = await query;
                 if (appError) throw appError;
 
+                // Загружаем имена пользователей для заявок
                 const { data: users, error: userError } = await supabase
                     .from('users')
                     .select('user_id, email, name, first_name, last_name');
@@ -158,13 +159,13 @@ const AdminDashboard = ({ onLogout }) => {
         }
     };
 
-    // --- ИСПРАВЛЕНИЕ 1: Работаем с application_id вместо id ---
+    // --- ЛОГИКА ЗАЯВОК (Схвалити/Відхилити) ---
     const handleApplication = async (appId, userId, action) => {
         const actionText = action === 'approved' ? 'СХВАЛИТИ' : 'ВІДХИЛИТИ';
         if (!window.confirm(`Ви впевнені, що хочете ${actionText} цю заявку?`)) return;
 
         try {
-            // Исправлено: используем application_id
+            // Используем application_id
             const { error: appError } = await supabase
                 .from('trainer_applications')
                 .update({ status: action })
@@ -181,7 +182,7 @@ const AdminDashboard = ({ onLogout }) => {
                 if (userError) alert('Увага: Заявку схвалено, але роль змінити не вдалося.');
             }
 
-            // Обновляем локально
+            // Обновляем список локально
             if (appFilter === 'pending') {
                 setItems(prev => prev.filter(item => item.application_id !== appId));
             } else {
@@ -226,7 +227,7 @@ const AdminDashboard = ({ onLogout }) => {
         return sortableItems;
     }, [items, sortConfig, activeTab, usersLookup]);
 
-    // --- ИСПРАВЛЕНИЕ 2: Удаление (Handle Delete) ---
+    // --- УДАЛЕНИЕ (DELETE) ---
     const handleDelete = async (id) => {
         if (!window.confirm('Видалити цей запис назавжди? Це незворотня дія.')) return;
 
@@ -238,31 +239,18 @@ const AdminDashboard = ({ onLogout }) => {
             const idColumn = activeTab === 'users' ? 'user_id' :
                 activeTab === 'applications' ? 'application_id' : 'id';
 
-            // Если удаляем пользователя, сначала чистим связанные данные,
-            // чтобы избежать ошибки Foreign Key Constraint
+            // Если удаляем пользователя, сначала чистим связанные данные (Каскадное удаление)
             if (activeTab === 'users') {
-                // 1. Удаляем продукты, созданные пользователем
-                // (Предполагаем, что колонка называется created_by на основе текста ошибки)
-                const { error: foodError } = await supabase
-                    .from('food_items')
-                    .delete()
-                    .eq('created_by', id);
-
+                const { error: foodError } = await supabase.from('food_items').delete().eq('created_by', id);
                 if (foodError) console.warn("Could not delete user foods:", foodError);
 
-                // 2. Удаляем заявки пользователя
-                const { error: appError } = await supabase
-                    .from('trainer_applications')
-                    .delete()
-                    .eq('user_id', id);
-
+                const { error: appError } = await supabase.from('trainer_applications').delete().eq('user_id', id);
                 if (appError) console.warn("Could not delete user applications:", appError);
 
-                // 3. Удаляем профиль (если есть отдельная таблица)
                 await supabase.from('user_profiles').delete().eq('user_id', id);
             }
 
-            // Теперь удаляем саму запись (пользователя или продукт)
+            // Удаляем саму запись
             const { error } = await supabase.from(table).delete().eq(idColumn, id);
 
             if (error) throw error;
@@ -518,7 +506,6 @@ const AdminDashboard = ({ onLogout }) => {
                                                 const applicant = activeTab === 'applications' ? usersLookup[item.user_id] : null;
 
                                                 return (
-                                                    // ИСПОЛЬЗУЕМ application_id КАК KEY ДЛЯ ЗАЯВОК
                                                     <tr key={item.id || item.user_id || item.application_id} className="hover:bg-slate-50/80 transition-colors group">
 
                                                         <td className="p-5 align-top w-1/4">
@@ -591,7 +578,6 @@ const AdminDashboard = ({ onLogout }) => {
                                                             <div className="flex justify-end gap-2">
                                                                 {activeTab === 'applications' && item.status === 'pending' && (
                                                                     <div className="flex flex-col gap-2">
-                                                                        {/* ИСПРАВЛЕНО: передаем item.application_id */}
                                                                         <button onClick={() => handleApplication(item.application_id, item.user_id, 'approved')} className="flex items-center justify-center gap-2 px-4 py-2 bg-emerald-500 hover:bg-emerald-600 text-white rounded-xl text-xs font-bold transition-all shadow-md shadow-emerald-200 w-32">
                                                                             <Check size={14} /> СХВАЛИТИ
                                                                         </button>
@@ -609,8 +595,18 @@ const AdminDashboard = ({ onLogout }) => {
                                                                     <button onClick={() => openModal(item)} className="p-2 bg-white border hover:border-blue-300 hover:text-blue-600 rounded-lg text-slate-400 transition-all"><Edit2 size={16} /></button>
                                                                 )}
 
-                                                                {/* Для удаления пользователя передаем user_id, для остальных - id, для заявок - application_id */}
-                                                                <button onClick={() => handleDelete(item.user_id || item.id || item.application_id)} className="p-2 bg-white border hover:border-red-300 hover:text-red-600 rounded-lg text-slate-400 transition-all"><Trash2 size={16} /></button>
+                                                                <button
+                                                                    onClick={() => {
+                                                                        // ИСПРАВЛЕНИЕ: Выбираем правильный ID для удаления
+                                                                        const idToDelete = activeTab === 'applications' ? item.application_id :
+                                                                            activeTab === 'users' ? item.user_id :
+                                                                                item.id;
+                                                                        handleDelete(idToDelete);
+                                                                    }}
+                                                                    className="p-2 bg-white border hover:border-red-300 hover:text-red-600 rounded-lg text-slate-400 transition-all"
+                                                                >
+                                                                    <Trash2 size={16} />
+                                                                </button>
                                                             </div>
                                                         </td>
                                                     </tr>
