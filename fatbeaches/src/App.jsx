@@ -619,7 +619,7 @@ const ProfileSetup = ({ session, onComplete, onBack, initialData }) => {
             'gain muscle': 'gain_muscle',
             'gain_muscle': 'gain_muscle',
             'maintain': 'maintain',
-            'форма': 'maintain' // fallback for localized
+            'форма': 'maintain' // fallback if localized values appear
         };
         if (map[s]) return map[s];
         return s.replace(/\s+/g, '_');
@@ -633,17 +633,6 @@ const ProfileSetup = ({ session, onComplete, onBack, initialData }) => {
     };
 
     const [formData, setFormData] = useState(initial);
-
-    // Если initialData придёт позже — синхронизируем состояние формы
-    useEffect(() => {
-        if (initialData) {
-            setFormData(prev => ({
-                ...prev,
-                ...initialData,
-                goal: normalizeGoal(initialData.goal)
-            }));
-        }
-    }, [initialData]);
 
     const handleSubmit = async (e) => {
         e.preventDefault();
@@ -672,14 +661,6 @@ const ProfileSetup = ({ session, onComplete, onBack, initialData }) => {
             bmr: Math.round(bmr),
             daily_calories_goal: calories
         };
-
-        // Логируем перед отправкой — обязательно проверьте консоль браузера
-        // чтобы убедиться, что в поле goal уходит 'lose_weight' / 'gain_muscle' / 'maintain'
-        // (а не 'lose weight' или 'gain muscle').
-        // Это поможет точно увидеть причину ошибки на сервере.
-        // Удалите/закомментируйте лог в продакшене.
-        // eslint-disable-next-line no-console
-        console.log('Profile upsert payload:', updates);
 
         const { error } = await supabase.from('user_profiles').upsert(updates, { onConflict: 'user_id' });
 
