@@ -8,7 +8,7 @@ import {
 import { supabase } from './supabase';
 
 const AdminDashboard = ({ onLogout }) => {
-    // --- КОНФИГУРАЦИЯ ТАБЛИЦ (Строго по PDF) ---
+    // --- КОНФІГУРАЦІЯ ТАБЛИЦЬ (Строго по PDF) ---
     const getTableConfig = (tab) => {
         switch (tab) {
             case 'users':
@@ -142,9 +142,15 @@ const AdminDashboard = ({ onLogout }) => {
                 const { data: apps, error: appError } = await query;
                 if (appError) throw appError;
 
+                // --- ВИПРАВЛЕННЯ ТУТ ---
+                // Запитуємо тільки ті поля, які існують в таблиці users (згідно PDF Source 44)
                 const { data: users, error: userError } = await supabase
                     .from('users')
-                    .select('user_id, email, name, first_name, last_name');
+                    .select('user_id, email, name'); // Прибрали first_name, last_name, бо їх немає
+
+                if (userError) {
+                    console.error("Error fetching users for apps:", userError);
+                }
 
                 if (!userError && users) {
                     const lookup = {};
@@ -258,7 +264,7 @@ const AdminDashboard = ({ onLogout }) => {
             }
 
             if (activeTab === 'users') {
-                await supabase.from('food_items').delete().eq('created_by', idToDelete).maybeSingle();
+                await supabase.from('food_items').delete().eq('created_by_user_id', idToDelete).maybeSingle();
                 await supabase.from('trainer_applications').delete().eq('user_id', idToDelete);
                 await supabase.from('user_profiles').delete().eq('user_id', idToDelete);
             }
@@ -277,7 +283,7 @@ const AdminDashboard = ({ onLogout }) => {
         }
     };
 
-    // --- SAVE ITEM (FIXED WORKOUT + ID CLEANUP) ---
+    // --- SAVE ITEM (ADD/EDIT) ---
     const handleSaveItem = async () => {
         try {
             const { table, idField } = getTableConfig(activeTab);
@@ -299,15 +305,14 @@ const AdminDashboard = ({ onLogout }) => {
             } else if (activeTab === 'workouts') {
                 dataToSend = {
                     name: formData.name,
-                    type: formData.type || 'cardio',
+                    type: formData.type || 'cardio', // Default type
                     calories_per_hour: formData.calories_per_hour || 0
                 };
             } else {
                 dataToSend = { ...formData };
             }
 
-            // ВАЖНО: Если мы создаем новый элемент, УДАЛЯЕМ любой ID из dataToSend,
-            // чтобы база данных создала его сама и не было ошибки Duplicate Key.
+            // Очищуємо ID при створенні нового, щоб БД згенерувала його сама
             if (!editingItem) {
                 delete dataToSend.id;
                 delete dataToSend[idField];
@@ -335,7 +340,7 @@ const AdminDashboard = ({ onLogout }) => {
             if (editingItem) {
                 setItems(items.map(i => i[idField] === editingItem[idField] ? savedItem : i));
             } else {
-                setItems([...items, savedItem]); // Добавляем новый в конец
+                setItems([...items, savedItem]);
             }
             setIsModalOpen(false);
             fetchStats();
@@ -349,10 +354,9 @@ const AdminDashboard = ({ onLogout }) => {
     const openModal = (item = null) => {
         setEditingItem(item);
         if (item) {
-            // Редактирование: копируем все поля
             setFormData({ ...item });
         } else {
-            // Создание нового: ЧИСТЫЙ ОБЪЕКТ без ID
+            // Для нових записів встановлюємо дефолтні значення
             setFormData(activeTab === 'workouts' ? { type: 'cardio' } : {});
         }
         setIsModalOpen(true);
@@ -390,8 +394,7 @@ const AdminDashboard = ({ onLogout }) => {
     function getUserDisplayName(user) {
         if (!user) return 'Користувач (ID...)';
         if (user.name) return user.name;
-        if (user.first_name && user.last_name) return `${user.first_name} ${user.last_name}`;
-        if (user.full_name) return user.full_name;
+        // Видалено перевірку first_name/last_name, бо таких колонок немає
         if (user.email) return user.email;
         return `ID: ${user.user_id?.substring(0, 6)}`;
     };
@@ -401,7 +404,7 @@ const AdminDashboard = ({ onLogout }) => {
         return item[idField];
     };
 
-    // Хелпер для выбора иконки и цвета карточки
+    // Хелпер для вибору стилю картки
     const getFoodCardStyle = (index) => {
         const styles = [
             { bg: 'bg-orange-50', text: 'text-orange-500', icon: Carrot },
@@ -469,7 +472,7 @@ const AdminDashboard = ({ onLogout }) => {
                             </div>
                         </div>
 
-                        {/* Grid Dashboard (АЛЬТЕРНАТИВА ФОТО - КАРТОЧКИ) */}
+                        {/* Grid Dashboard (АЛЬТЕРНАТИВА ФОТО - КАРТКИ) */}
                         <div>
                             <div className="flex justify-between items-end mb-6">
                                 <div>
@@ -487,7 +490,7 @@ const AdminDashboard = ({ onLogout }) => {
                                     return (
                                         <div key={dish.food_item_id || index} className="bg-white rounded-2xl p-4 shadow-sm border border-slate-100 hover:shadow-xl hover:-translate-y-1 transition-all duration-300 group cursor-pointer flex flex-col h-full" onClick={() => setActiveTab('foods')}>
 
-                                            {/* Верхняя часть карточки с иконкой */}
+                                            {/* Верхня частина картки з іконкою */}
                                             <div className={`h-32 rounded-xl flex items-center justify-center mb-4 ${style.bg} ${style.text}`}>
                                                 {React.createElement(style.icon, { size: 48, className: "opacity-80 group-hover:scale-110 transition-transform" })}
                                             </div>
