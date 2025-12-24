@@ -68,27 +68,20 @@ const FoodModal = ({ session, mealType, onClose, onFoodAdded }) => {
         return () => { isMounted = false; };
     }, [activeTab, search, session.user.id]);
 
-    const handleCreateFood = async (e) => {
-        e.preventDefault();
+    const handleAddEntry = async () => {
+        if (!selectedFood) return;
 
-        const isTrainer = role === 'trainer'; // 🔥 КЛЮЧ
-
-        const { error } = await supabase.from('food_items').insert({
-            name: newFood.name,
-            calories: parseFloat(newFood.calories),
-            proteins: parseFloat(newFood.proteins || 0),
-            fats: parseFloat(newFood.fats || 0),
-            carbohydrates: parseFloat(newFood.carbs || 0),
-            created_by_user_id: session.user.id,
-            is_custom_dish: true,
-
-            // 🔥 ГЛАВНАЯ ПРАВКА
-            is_public_plan: isTrainer
+        const { error } = await supabase.from('food_entries').insert({
+            user_id: session.user.id,
+            food_item_id: selectedFood.food_item_id,
+            meal_type: mealType,
+            quantity_grams: parseFloat(grams),
+            date_time: new Date().toISOString()
         });
 
         if (!error) {
-            setIsCreating(false);
-            setActiveTab(isTrainer ? 'public' : 'my');
+            onFoodAdded();
+            onClose();
         } else {
             alert(error.message);
         }
@@ -104,12 +97,12 @@ const FoodModal = ({ session, mealType, onClose, onFoodAdded }) => {
             carbohydrates: parseFloat(newFood.carbs || 0),
             created_by_user_id: session.user.id,
             is_custom_dish: true,
-            is_public_plan: role === 'trainer'
+            is_public_plan: false
         });
 
         if (!error) {
             setIsCreating(false);
-            setActiveTab(role === 'trainer' ? 'public' : 'my');
+            setActiveTab('my');
         } else {
             alert(error.message);
         }
@@ -651,7 +644,7 @@ const ProfileSetup = ({ session, onComplete, onBack, initialData }) => {
     );
 };
 
-const Dashboard = ({ session, profile, role, onEditProfile }) => {
+const Dashboard = ({ session, profile, onEditProfile }) => {
     const [menuOpen, setMenuOpen] = useState(false);
     const [showFoodModal, setShowFoodModal] = useState(false);
     const [showWorkoutModal, setShowWorkoutModal] = useState(false);
@@ -726,14 +719,6 @@ const Dashboard = ({ session, profile, role, onEditProfile }) => {
     const remainingCalories = Math.max(0, dailyGoal - netCalories);
     const progressPercent = Math.round((netCalories / dailyGoal) * 100);
 
-    const getRoleLabel = () => {
-        if (role === 'trainer') return { text: 'Тренер', class: 'bg-blue-100 text-blue-700 border-blue-200' };
-        if (role === 'admin') return { text: 'Адмін', class: 'bg-purple-100 text-purple-700 border-purple-200' };
-        return { text: 'Клієнт', class: 'bg-emerald-100 text-emerald-700 border-emerald-200' };
-    };
-
-    const roleBadge = getRoleLabel();
-
     return (
         <div className="min-h-screen bg-slate-50 pb-24 font-sans animate-fade-in">
             <header className="bg-white px-6 pt-6 pb-8 rounded-b-[3rem] shadow-sm mb-8 relative z-20">
@@ -743,12 +728,7 @@ const Dashboard = ({ session, profile, role, onEditProfile }) => {
                             <User size={20} />
                         </div>
                         <div>
-                            <div className="flex items-center gap-2">
-                                <h1 className="text-lg font-bold text-slate-800 leading-tight">Привіт!</h1>
-                                <span className={`px-2 py-0.5 rounded-md text-[10px] font-black uppercase tracking-wide border ${roleBadge.class}`}>
-                                    {roleBadge.text}
-                                </span>
-                            </div>
+                            <h1 className="text-lg font-bold text-slate-800 leading-tight">Привіт!</h1>
                             <p className="text-xs text-slate-400 font-medium">Гарного дня</p>
                         </div>
                     </div>
@@ -872,7 +852,6 @@ const Dashboard = ({ session, profile, role, onEditProfile }) => {
             {showFoodModal && (
                 <FoodModal
                     session={session}
-                    role={role}          // 🔥 ДОБАВЛЕНО
                     mealType={selectedMeal}
                     onClose={() => setShowFoodModal(false)}
                     onFoodAdded={() => setUpdateTrigger(t => t + 1)}
@@ -1003,8 +982,7 @@ function App() {
         if (trainerApp.status === 'pending') {
             return <TrainerPending />;
         }
-        // Если тренер одобрен, показываем Dashboard с ролью тренера
-        return <Dashboard session={session} profile={profile} role={role} onEditProfile={() => setIsEditingProfile(true)} />;
+        return <div className="p-10 text-center">Тренерська панель (В розробці)</div>;
     }
 
     if (isEditingProfile) {
@@ -1021,7 +999,7 @@ function App() {
         return <ProfileSetup session={session} onBack={handleBackToRole} onComplete={() => checkUserStatus(session.user.id)} />;
     }
 
-    return <Dashboard session={session} profile={profile} role={role} onEditProfile={() => setIsEditingProfile(true)} />;
+    return <Dashboard session={session} profile={profile} onEditProfile={() => setIsEditingProfile(true)} />;
 }
 
 export default App;
