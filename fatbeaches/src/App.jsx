@@ -9,6 +9,8 @@ import {
 } from 'lucide-react';
 import AnalyticsView from './AnalyticsView';
 
+// --- COMPONENTS ---
+
 const MealCard = ({ title, icon, calories, color, bg, onClick }) => {
     const IconComponent = icon;
     return (
@@ -31,9 +33,7 @@ const MealCard = ({ title, icon, calories, color, bg, onClick }) => {
     );
 };
 
-// --- FoodModal: Supports generic creation (mealType = null) ---
 const FoodModal = ({ session, mealType, onClose, onFoodAdded, role }) => {
-    // Инициализируем activeTab на основе пропсов, чтобы не вызывать setState синхронно в эффекте
     const [activeTab, setActiveTab] = useState(() => (!mealType && role === 'trainer') ? 'public' : 'my');
     const [search, setSearch] = useState('');
     const [foods, setFoods] = useState([]);
@@ -43,9 +43,6 @@ const FoodModal = ({ session, mealType, onClose, onFoodAdded, role }) => {
     const [isCreating, setIsCreating] = useState(false);
     const [newFood, setNewFood] = useState({ name: '', calories: '', proteins: '', fats: '', carbs: '' });
 
-    // Ранее здесь выполнялся эффект, который синхронно делал setActiveTab при изменении mealType/role.
-    // Теперь начальное значение задано выше — эффект удалён, чтобы избежать предупреждений о каскадных рендерах.
-
     useEffect(() => {
         let isMounted = true;
         const loadFoods = async () => {
@@ -53,10 +50,8 @@ const FoodModal = ({ session, mealType, onClose, onFoodAdded, role }) => {
             let query = supabase.from('food_items').select('*');
 
             if (activeTab === 'my') {
-                // Private dishes
                 query = query.eq('created_by_user_id', session.user.id);
             } else {
-                // Public dishes (Trainer Base)
                 query = query.eq('is_public_plan', true);
             }
 
@@ -76,7 +71,6 @@ const FoodModal = ({ session, mealType, onClose, onFoodAdded, role }) => {
     }, [activeTab, search, session.user.id]);
 
     const handleAddEntry = async () => {
-        // Якщо mealType немає, ми не можемо додати в щоденник (це просто перегляд бази)
         if (!selectedFood || !mealType) return;
 
         const { error } = await supabase.from('food_entries').insert({
@@ -97,8 +91,6 @@ const FoodModal = ({ session, mealType, onClose, onFoodAdded, role }) => {
 
     const handleCreateFood = async (e) => {
         e.preventDefault();
-
-        // Изменил логику: Public только когда тренер и текущая вкладка — public (База тренерів).
         const shouldBePublic = (role === 'trainer' && activeTab === 'public');
 
         const { error } = await supabase.from('food_items').insert({
@@ -113,27 +105,17 @@ const FoodModal = ({ session, mealType, onClose, onFoodAdded, role }) => {
         });
 
         if (!error) {
-            // Успішно створено
-            if (!mealType) {
-                // Якщо ми просто створювали страву в базу (не в обід), то просто закриваємо або скидаємо
-                alert("Страву успішно створено!");
-                setIsCreating(false);
-                setNewFood({ name: '', calories: '', proteins: '', fats: '', carbs: '' });
-                // Можна оновити список
-                setActiveTab(shouldBePublic ? 'public' : 'my');
-            } else {
-                // Якщо ми були в контексті "Додати до обіду", то повертаємось до вибору, щоб юзер міг її додати
-                setIsCreating(false);
-                setActiveTab(shouldBePublic ? 'public' : 'my');
-                setNewFood({ name: '', calories: '', proteins: '', fats: '', carbs: '' });
-            }
+            alert("Страву успішно створено!");
+            setIsCreating(false);
+            setNewFood({ name: '', calories: '', proteins: '', fats: '', carbs: '' });
+            setActiveTab(shouldBePublic ? 'public' : 'my');
         } else {
             alert(error.message);
         }
     };
 
     const getMealName = (type) => {
-        if (!type) return 'База страв'; // Fallback logic
+        if (!type) return 'База страв';
         switch (type) {
             case 'breakfast': return 'Сніданок';
             case 'lunch': return 'Обід';
@@ -148,7 +130,6 @@ const FoodModal = ({ session, mealType, onClose, onFoodAdded, role }) => {
             <div className="bg-white w-full max-w-lg h-[90vh] sm:h-auto sm:max-h-[85vh] rounded-t-[2rem] sm:rounded-[2rem] shadow-2xl flex flex-col overflow-hidden">
                 <div className="bg-white p-6 border-b border-slate-100 flex justify-between items-center shrink-0">
                     <div>
-                        {/* Змінюємо заголовок в залежності від режиму */}
                         <h3 className="text-xl font-bold text-slate-800">
                             {mealType ? `Додати у ${getMealName(mealType)}` : 'Керування стравами'}
                         </h3>
@@ -235,7 +216,6 @@ const FoodModal = ({ session, mealType, onClose, onFoodAdded, role }) => {
                                 </div>
                             </div>
 
-                            {/* Show entry calculator ONLY if we are in "Add to Meal" mode */}
                             {mealType && (
                                 <div className="bg-slate-50 p-6 rounded-[1.5rem] border border-slate-100">
                                     <label className="block text-sm font-bold text-slate-700 mb-4 text-center uppercase tracking-wider">Вага порції (грами)</label>
@@ -316,7 +296,6 @@ const FoodModal = ({ session, mealType, onClose, onFoodAdded, role }) => {
     );
 };
 
-// ... остальной код файла без изменений ...
 const WorkoutModal = ({ session, onClose, onWorkoutAdded }) => {
     const [duration, setDuration] = useState(30);
     const [activities, setActivities] = useState([]);
@@ -549,7 +528,6 @@ const RoleSelection = ({ session, onRoleSelected }) => {
     );
 };
 
-
 const TrainerVerification = ({ session, onSubmitted, onBack }) => {
     const [details, setDetails] = useState('');
     const [loading, setLoading] = useState(false);
@@ -607,22 +585,26 @@ const TrainerPending = () => (
     </div>
 );
 
+// --- UPDATED PROFILE SETUP COMPONENT ---
 const ProfileSetup = ({ session, onComplete, onBack, initialData }) => {
     const [loading, setLoading] = useState(false);
 
+    // FIXED: Helper to safely map database values
     const normalizeGoal = (g) => {
         if (!g) return 'maintain';
-        const s = String(g).toLowerCase().trim();
         const map = {
             'lose weight': 'lose_weight',
             'lose_weight': 'lose_weight',
             'gain muscle': 'gain_muscle',
             'gain_muscle': 'gain_muscle',
             'maintain': 'maintain',
-            'форма': 'maintain' // fallback if localized values appear
+            // Localized fallback if needed
+            'схуднути': 'lose_weight',
+            'маса': 'gain_muscle',
+            'форма': 'maintain'
         };
-        if (map[s]) return map[s];
-        return s.replace(/\s+/g, '_');
+        const s = String(g).toLowerCase().trim();
+        return map[s] || 'maintain';
     };
 
     const initial = initialData ? {
@@ -647,7 +629,9 @@ const ProfileSetup = ({ session, onComplete, onBack, initialData }) => {
         let bmr = (10 * w) + (6.25 * h) - (5 * a) + (formData.gender === 'male' ? 5 : -161);
         let calories = Math.round(bmr * 1.375);
 
+        // Normalize goal again to be safe
         const goal = normalizeGoal(formData.goal);
+
         if (goal === 'lose_weight') calories -= 500;
         if (goal === 'gain_muscle') calories += 400;
 
@@ -657,7 +641,7 @@ const ProfileSetup = ({ session, onComplete, onBack, initialData }) => {
             weight_kg: w,
             height_cm: h,
             gender: formData.gender,
-            goal: goal,
+            goal: goal, // Sending snake_case value
             bmr: Math.round(bmr),
             daily_calories_goal: calories
         };
@@ -709,6 +693,7 @@ const ProfileSetup = ({ session, onComplete, onBack, initialData }) => {
                         <div className="space-y-2">
                             <label className="text-xs font-bold text-slate-400 uppercase ml-2">Ціль</label>
                             <div className="relative">
+                                {/* FIXED: Values now match Postgres ENUMs (snake_case) */}
                                 <select value={formData.goal} onChange={e => setFormData({ ...formData, goal: e.target.value })} className="w-full p-4 rounded-2xl bg-slate-50 outline-none font-medium text-slate-700 cursor-pointer border border-slate-100 appearance-none">
                                     <option value="lose_weight">Схуднути</option>
                                     <option value="maintain">Форма</option>
@@ -725,6 +710,8 @@ const ProfileSetup = ({ session, onComplete, onBack, initialData }) => {
         </div>
     );
 };
+
+// --- END OF PROFILE SETUP ---
 
 const Dashboard = ({ session, profile, onEditProfile, role }) => {
     const [menuOpen, setMenuOpen] = useState(false);
