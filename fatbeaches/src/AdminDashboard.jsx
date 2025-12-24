@@ -2,7 +2,7 @@
 import {
     Users, Utensils, Activity, Plus, Trash2, Save, X, Search,
     Eye, Edit2, Check, XOctagon, Calendar,
-    LayoutDashboard, FileText, ArrowUpDown
+    LayoutDashboard, FileText, ArrowUpDown, Dumbbell
 } from 'lucide-react';
 import { supabase } from './supabase';
 
@@ -13,11 +13,11 @@ const AdminDashboard = ({ onLogout }) => {
             case 'users':
                 return { table: 'users', idField: 'user_id' };
             case 'foods':
-                return { table: 'food_items', idField: 'food_item_id' }; // [cite: 17]
+                return { table: 'food_items', idField: 'food_item_id' };
             case 'workouts':
-                return { table: 'workout_items', idField: 'workout_item_id' }; // [cite: 46]
+                return { table: 'workout_items', idField: 'workout_item_id' };
             case 'applications':
-                return { table: 'trainer_applications', idField: 'application_id' }; // [cite: 32]
+                return { table: 'trainer_applications', idField: 'application_id' };
             default:
                 return { table: '', idField: 'id' };
         }
@@ -31,11 +31,7 @@ const AdminDashboard = ({ onLogout }) => {
     const [loading, setLoading] = useState(true);
     const [searchTerm, setSearchTerm] = useState('');
     const [sortConfig, setSortConfig] = useState({ key: null, direction: 'asc' });
-
-    // Stats
     const [stats, setStats] = useState({ users: 0, foods: 0, workouts: 0, pendingTrainers: 0 });
-
-    // Application Filter
     const [appFilter, setAppFilter] = useState('pending');
 
     // Modals
@@ -51,13 +47,30 @@ const AdminDashboard = ({ onLogout }) => {
     const [userRole, setUserRole] = useState('');
     const [userStatus, setUserStatus] = useState('');
 
-    // --- IMAGES (Заглушки) ---
-    const foodImages = [
-        'https://images.unsplash.com/photo-1546069901-ba9599a7e63c?auto=format&fit=crop&w=800&q=80',
-        'https://images.unsplash.com/photo-1550304943-4f24f54ddde9?auto=format&fit=crop&w=800&q=80',
-        'https://images.unsplash.com/photo-1612874742237-982e9657dd18?auto=format&fit=crop&w=800&q=80',
-        'https://images.unsplash.com/photo-1519708227418-c8fd9a32b7a2?auto=format&fit=crop&w=800&q=80'
-    ];
+    // --- УМНЫЙ ПОДБОР КАРТИНОК ---
+    // Функция ищет ключевые слова в названии и возвращает подходящее фото
+    const getFoodImage = (name) => {
+        if (!name) return 'https://images.unsplash.com/photo-1490645935967-10de6ba17061?auto=format&fit=crop&w=800&q=80'; // Default healthy
+
+        const lowerName = name.toLowerCase();
+
+        if (lowerName.includes('салат') || lowerName.includes('salad') || lowerName.includes('овоч'))
+            return 'https://images.unsplash.com/photo-1512621776951-a57141f2eefd?auto=format&fit=crop&w=800&q=80';
+        if (lowerName.includes('курк') || lowerName.includes('chicken') || lowerName.includes('філе'))
+            return 'https://images.unsplash.com/photo-1604908176997-125f25cc6f3d?auto=format&fit=crop&w=800&q=80';
+        if (lowerName.includes('риб') || lowerName.includes('fish') || lowerName.includes('лосос') || lowerName.includes('salmon'))
+            return 'https://images.unsplash.com/photo-1519708227418-c8fd9a32b7a2?auto=format&fit=crop&w=800&q=80';
+        if (lowerName.includes('паста') || lowerName.includes('pasta') || lowerName.includes('макарон'))
+            return 'https://images.unsplash.com/photo-1612874742237-982e9657dd18?auto=format&fit=crop&w=800&q=80';
+        if (lowerName.includes('яйц') || lowerName.includes('egg') || lowerName.includes('омлет'))
+            return 'https://images.unsplash.com/photo-1525351484163-7529414395d8?auto=format&fit=crop&w=800&q=80';
+        if (lowerName.includes('гречк') || lowerName.includes('рис') || lowerName.includes('каша') || lowerName.includes('bowl'))
+            return 'https://images.unsplash.com/photo-1546069901-ba9599a7e63c?auto=format&fit=crop&w=800&q=80';
+        if (lowerName.includes('суп') || lowerName.includes('soup') || lowerName.includes('борщ'))
+            return 'https://images.unsplash.com/photo-1547592166-23ac45744acd?auto=format&fit=crop&w=800&q=80';
+
+        return 'https://images.unsplash.com/photo-1498837167922-ddd27525d352?auto=format&fit=crop&w=800&q=80'; // Fallback
+    };
 
     // --- EFFECTS ---
     useEffect(() => {
@@ -107,7 +120,7 @@ const AdminDashboard = ({ onLogout }) => {
             if (!data || data.length === 0) {
                 setDashboardDishes([
                     { food_item_id: 1, name: 'Демо: Стейк лосося', calories: 320, proteins: 25, fats: 15, carbohydrates: 5 },
-                    { food_item_id: 2, name: 'Демо: Боул з кіноа', calories: 380, proteins: 12, fats: 10, carbohydrates: 45 },
+                    { food_item_id: 2, name: 'Демо: Гречка', calories: 380, proteins: 12, fats: 10, carbohydrates: 45 },
                     { food_item_id: 3, name: 'Демо: Салат Цезар', calories: 450, proteins: 20, fats: 20, carbohydrates: 15 },
                     { food_item_id: 4, name: 'Демо: Паста', calories: 550, proteins: 18, fats: 12, carbohydrates: 60 },
                 ]);
@@ -246,7 +259,7 @@ const AdminDashboard = ({ onLogout }) => {
         return sortableItems;
     }, [items, sortConfig, activeTab, usersLookup]);
 
-    // --- DELETE ITEM (FIXED) ---
+    // --- DELETE ITEM ---
     const handleDelete = async (idToDelete) => {
         if (!idToDelete) {
             alert("Помилка: Не вдалося визначити ID запису.");
@@ -258,20 +271,20 @@ const AdminDashboard = ({ onLogout }) => {
         try {
             const { table, idField } = getTableConfig(activeTab);
 
-            // ИСПРАВЛЕНИЕ: Удаляем связи из food_entries перед удалением продукта
+            // Удаляем связи из food_entries перед удалением продукта
             if (activeTab === 'foods') {
                 const { error: entriesError } = await supabase
-                    .from('food_entries') // 
+                    .from('food_entries')
                     .delete()
-                    .eq('food_item_id', idToDelete); // Ссылается на food_item_id
+                    .eq('food_item_id', idToDelete);
 
                 if (entriesError) console.warn("Could not delete related food entries:", entriesError);
             }
 
-            // ИСПРАВЛЕНИЕ: Аналогично для тренировок
+            // Удаляем связи для тренировок
             if (activeTab === 'workouts') {
                 const { error: wEntriesError } = await supabase
-                    .from('workout_entries') // [cite: 45]
+                    .from('workout_entries')
                     .delete()
                     .eq('workout_item_id', idToDelete);
 
@@ -280,8 +293,8 @@ const AdminDashboard = ({ onLogout }) => {
 
             // Каскадное удаление для пользователей
             if (activeTab === 'users') {
-                const { error: foodError } = await supabase.from('food_items').delete().eq('created_by', idToDelete).maybeSingle();
-                const { error: appError } = await supabase.from('trainer_applications').delete().eq('user_id', idToDelete);
+                await supabase.from('food_items').delete().eq('created_by', idToDelete).maybeSingle();
+                await supabase.from('trainer_applications').delete().eq('user_id', idToDelete);
                 await supabase.from('user_profiles').delete().eq('user_id', idToDelete);
             }
 
@@ -292,7 +305,6 @@ const AdminDashboard = ({ onLogout }) => {
 
             // Обновляем UI
             setItems(items.filter(item => item[idField] !== idToDelete));
-
             if (activeTab === 'foods') fetchDashboardData();
             fetchStats();
 
@@ -302,7 +314,7 @@ const AdminDashboard = ({ onLogout }) => {
         }
     };
 
-    // --- SAVE ITEM (ADD/EDIT) ---
+    // --- SAVE ITEM (FIXED WORKOUT TYPE) ---
     const handleSaveItem = async () => {
         try {
             const { table, idField } = getTableConfig(activeTab);
@@ -310,7 +322,7 @@ const AdminDashboard = ({ onLogout }) => {
             if (activeTab === 'foods' && !formData.name) { alert('Введіть назву'); return; }
             if (activeTab === 'workouts' && !formData.name) { alert('Введіть назву'); return; }
 
-            // Подготавливаем данные СТРОГО ПО PDF
+            // Подготавливаем данные
             let dataToSend = {};
 
             if (activeTab === 'foods') {
@@ -322,8 +334,11 @@ const AdminDashboard = ({ onLogout }) => {
                     carbohydrates: formData.carbohydrates || 0
                 };
             } else if (activeTab === 'workouts') {
+                // ИСПРАВЛЕНИЕ: Добавляем обязательное поле TYPE
                 dataToSend = {
                     name: formData.name,
+                    // Используем значение из формы или дефолт 'cardio', так как поле не может быть null
+                    type: formData.type || 'cardio',
                     calories_per_hour: formData.calories_per_hour || 0
                 };
             } else {
@@ -332,18 +347,9 @@ const AdminDashboard = ({ onLogout }) => {
 
             let result;
             if (editingItem) {
-                // UPDATE
-                result = await supabase
-                    .from(table)
-                    .update(dataToSend)
-                    .eq(idField, editingItem[idField])
-                    .select();
+                result = await supabase.from(table).update(dataToSend).eq(idField, editingItem[idField]).select();
             } else {
-                // INSERT
-                result = await supabase
-                    .from(table)
-                    .insert([dataToSend])
-                    .select();
+                result = await supabase.from(table).insert([dataToSend]).select();
             }
 
             if (result.error) throw result.error;
@@ -368,8 +374,12 @@ const AdminDashboard = ({ onLogout }) => {
         if (item && activeTab === 'workouts') {
             setFormData({
                 ...item,
+                type: item.type || 'cardio', // Подгружаем тип для редактирования
                 calories_per_hour: item.calories_per_hour
             });
+        } else if (activeTab === 'workouts') {
+            // Дефолт для новой тренировки
+            setFormData({ type: 'cardio' });
         } else {
             setFormData(item ? { ...item } : {});
         }
@@ -492,8 +502,9 @@ const AdminDashboard = ({ onLogout }) => {
                                 {dashboardDishes.map((dish, index) => (
                                     <div key={dish.food_item_id || index} className="bg-white rounded-2xl p-3 shadow-sm border border-slate-100 hover:shadow-xl hover:-translate-y-1 transition-all duration-300 group cursor-pointer" onClick={() => setActiveTab('foods')}>
                                         <div className="h-48 bg-slate-200 rounded-xl relative overflow-hidden mb-4">
+                                            {/* ИСПОЛЬЗУЕМ УМНЫЙ ПОДБОР КАРТИНОК */}
                                             <img
-                                                src={dish.image_url || foodImages[index % foodImages.length]}
+                                                src={getFoodImage(dish.name)}
                                                 alt={dish.name}
                                                 className="w-full h-full object-cover group-hover:scale-110 transition-transform duration-700"
                                             />
@@ -643,8 +654,11 @@ const AdminDashboard = ({ onLogout }) => {
 
                                                             {activeTab === 'workouts' && (
                                                                 <div className="flex flex-wrap gap-2 text-xs font-bold">
-                                                                    <span className="bg-purple-50 text-purple-600 px-2 py-1 rounded-md border border-purple-100">
+                                                                    <span className="bg-purple-50 text-purple-600 px-2 py-1 rounded-md border border-purple-100 mr-2">
                                                                         {item.calories_per_hour ? item.calories_per_hour : 0} ккал/год
+                                                                    </span>
+                                                                    <span className="text-slate-400 capitalize bg-slate-100 px-2 py-1 rounded-md">
+                                                                        {item.type}
                                                                     </span>
                                                                 </div>
                                                             )}
@@ -727,14 +741,35 @@ const AdminDashboard = ({ onLogout }) => {
 
                             {activeTab === 'workouts' && (
                                 <div>
-                                    <label className="text-xs font-bold text-slate-500">Калорії (за годину)</label>
-                                    <input
-                                        type="number"
-                                        className="w-full p-3 bg-slate-50 rounded-xl outline-none"
-                                        placeholder="Наприклад: 500"
-                                        value={formData.calories_per_hour || ''}
-                                        onChange={e => setFormData({ ...formData, calories_per_hour: e.target.value })}
-                                    />
+                                    {/* ИСПРАВЛЕНИЕ: ДОБАВЛЕНО ВЫБОР ТИПА */}
+                                    <div className="mb-4">
+                                        <label className="text-sm font-bold text-slate-700 block mb-2">Тип тренування</label>
+                                        <div className="grid grid-cols-2 gap-2">
+                                            <button
+                                                onClick={() => setFormData({ ...formData, type: 'cardio' })}
+                                                className={`p-3 rounded-xl border-2 font-bold transition-all ${formData.type === 'cardio' ? 'border-orange-500 bg-orange-50 text-orange-600' : 'border-slate-100 bg-slate-50 text-slate-400'}`}
+                                            >
+                                                Cardio
+                                            </button>
+                                            <button
+                                                onClick={() => setFormData({ ...formData, type: 'strength' })}
+                                                className={`p-3 rounded-xl border-2 font-bold transition-all ${formData.type === 'strength' ? 'border-purple-500 bg-purple-50 text-purple-600' : 'border-slate-100 bg-slate-50 text-slate-400'}`}
+                                            >
+                                                Strength
+                                            </button>
+                                        </div>
+                                    </div>
+
+                                    <div>
+                                        <label className="text-xs font-bold text-slate-500">Калорії (за годину)</label>
+                                        <input
+                                            type="number"
+                                            className="w-full p-3 bg-slate-50 rounded-xl outline-none"
+                                            placeholder="Наприклад: 500"
+                                            value={formData.calories_per_hour || ''}
+                                            onChange={e => setFormData({ ...formData, calories_per_hour: e.target.value })}
+                                        />
+                                    </div>
                                 </div>
                             )}
 
