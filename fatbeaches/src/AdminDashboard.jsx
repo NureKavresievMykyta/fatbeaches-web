@@ -13,11 +13,11 @@ const AdminDashboard = ({ onLogout }) => {
             case 'users':
                 return { table: 'users', idField: 'user_id' };
             case 'foods':
-                return { table: 'food_items', idField: 'food_item_id' }; // Исправлено по стр. 3
+                return { table: 'food_items', idField: 'food_item_id' }; // [cite: 17]
             case 'workouts':
-                return { table: 'workout_items', idField: 'workout_item_id' }; // Исправлено по стр. 9
+                return { table: 'workout_items', idField: 'workout_item_id' }; // [cite: 46]
             case 'applications':
-                return { table: 'trainer_applications', idField: 'application_id' }; // Исправлено по стр. 5
+                return { table: 'trainer_applications', idField: 'application_id' }; // [cite: 32]
             default:
                 return { table: '', idField: 'id' };
         }
@@ -96,7 +96,6 @@ const AdminDashboard = ({ onLogout }) => {
     // --- FETCH DASHBOARD ---
     const fetchDashboardData = async () => {
         try {
-            // В PDF нет created_at для food_items, поэтому сортируем по ID (последние добавленные)
             const { data, error } = await supabase
                 .from('food_items')
                 .select('*')
@@ -185,7 +184,6 @@ const AdminDashboard = ({ onLogout }) => {
         if (!window.confirm(`Ви впевнені, що хочете ${actionText} цю заявку?`)) return;
 
         try {
-            // Используем application_id (Integer)
             const { idField } = getTableConfig('applications');
 
             const { error: appError } = await supabase
@@ -248,7 +246,7 @@ const AdminDashboard = ({ onLogout }) => {
         return sortableItems;
     }, [items, sortConfig, activeTab, usersLookup]);
 
-    // --- DELETE ITEM ---
+    // --- DELETE ITEM (FIXED) ---
     const handleDelete = async (idToDelete) => {
         if (!idToDelete) {
             alert("Помилка: Не вдалося визначити ID запису.");
@@ -260,19 +258,34 @@ const AdminDashboard = ({ onLogout }) => {
         try {
             const { table, idField } = getTableConfig(activeTab);
 
+            // ИСПРАВЛЕНИЕ: Удаляем связи из food_entries перед удалением продукта
+            if (activeTab === 'foods') {
+                const { error: entriesError } = await supabase
+                    .from('food_entries') // 
+                    .delete()
+                    .eq('food_item_id', idToDelete); // Ссылается на food_item_id
+
+                if (entriesError) console.warn("Could not delete related food entries:", entriesError);
+            }
+
+            // ИСПРАВЛЕНИЕ: Аналогично для тренировок
+            if (activeTab === 'workouts') {
+                const { error: wEntriesError } = await supabase
+                    .from('workout_entries') // [cite: 45]
+                    .delete()
+                    .eq('workout_item_id', idToDelete);
+
+                if (wEntriesError) console.warn("Could not delete related workout entries:", wEntriesError);
+            }
+
             // Каскадное удаление для пользователей
             if (activeTab === 'users') {
-                // ВАЖНО: удаляем по created_by или user_id в зависимости от структуры
-                // По PDF видно, что в workout_items есть created_by_user_id (Page 9)
-                const { error: foodError } = await supabase.from('food_items').delete().eq('created_by', idToDelete).maybeSingle(); // maybeSingle чтобы не падать если колонки нет
-
+                const { error: foodError } = await supabase.from('food_items').delete().eq('created_by', idToDelete).maybeSingle();
                 const { error: appError } = await supabase.from('trainer_applications').delete().eq('user_id', idToDelete);
-                if (appError) console.warn("Could not delete user applications:", appError);
-
                 await supabase.from('user_profiles').delete().eq('user_id', idToDelete);
             }
 
-            // Удаляем запись, используя ПРАВИЛЬНОЕ имя ID поля
+            // Удаляем саму запись
             const { error } = await supabase.from(table).delete().eq(idField, idToDelete);
 
             if (error) throw error;
@@ -301,7 +314,6 @@ const AdminDashboard = ({ onLogout }) => {
             let dataToSend = {};
 
             if (activeTab === 'foods') {
-                // См. Page 3 PDF
                 dataToSend = {
                     name: formData.name,
                     calories: formData.calories || 0,
@@ -310,14 +322,9 @@ const AdminDashboard = ({ onLogout }) => {
                     carbohydrates: formData.carbohydrates || 0
                 };
             } else if (activeTab === 'workouts') {
-                // См. Page 9 PDF, Source 46
-                // Колонки: name, type, calories_per_hour
                 dataToSend = {
                     name: formData.name,
-                    // Если пользователь ввел калории в форму, сохраняем их в calories_per_hour
-                    calories_per_hour: formData.calories_per_hour || 0,
-                    // Можно добавить дефолтный тип или select в будущем
-                    // type: 'cardio' 
+                    calories_per_hour: formData.calories_per_hour || 0
                 };
             } else {
                 dataToSend = { ...formData };
@@ -358,7 +365,6 @@ const AdminDashboard = ({ onLogout }) => {
 
     const openModal = (item = null) => {
         setEditingItem(item);
-        // При открытии модалки, если это тренировка, мапим calories_per_hour в поле формы
         if (item && activeTab === 'workouts') {
             setFormData({
                 ...item,
@@ -408,7 +414,6 @@ const AdminDashboard = ({ onLogout }) => {
         return `ID: ${user.user_id?.substring(0, 6)}`;
     };
 
-    // Получаем правильный ID в зависимости от вкладки
     const getItemId = (item) => {
         const { idField } = getTableConfig(activeTab);
         return item[idField];
